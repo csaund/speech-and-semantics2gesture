@@ -1,0 +1,90 @@
+INFO line 57:12: tf.summary.scalar requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 57:12: Renamed 'tf.summary.scalar' to 'tf.compat.v1.summary.scalar'
+INFO line 63:12: tf.summary.scalar requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 63:12: Renamed 'tf.summary.scalar' to 'tf.compat.v1.summary.scalar'
+INFO line 67:26: Added keywords to args of function 'tf.convert_to_tensor'
+INFO line 94:26: tf.losses.mean_squared_error requires manual check. tf.losses have been replaced with object oriented versions in TF 2.0 and after. The loss function calls have been converted to compat.v1 for backward compatibility. Please update these calls to the TF 2.0 versions.
+INFO line 94:26: Renamed 'tf.losses.mean_squared_error' to 'tf.compat.v1.losses.mean_squared_error'
+INFO line 95:44: tf.losses.mean_squared_error requires manual check. tf.losses have been replaced with object oriented versions in TF 2.0 and after. The loss function calls have been converted to compat.v1 for backward compatibility. Please update these calls to the TF 2.0 versions.
+INFO line 95:44: Renamed 'tf.losses.mean_squared_error' to 'tf.compat.v1.losses.mean_squared_error'
+INFO line 97:12: tf.summary.scalar requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 97:12: Renamed 'tf.summary.scalar' to 'tf.compat.v1.summary.scalar'
+INFO line 100:30: tf.losses.mean_squared_error requires manual check. tf.losses have been replaced with object oriented versions in TF 2.0 and after. The loss function calls have been converted to compat.v1 for backward compatibility. Please update these calls to the TF 2.0 versions.
+INFO line 100:30: Renamed 'tf.losses.mean_squared_error' to 'tf.compat.v1.losses.mean_squared_error'
+INFO line 101:12: tf.summary.scalar requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 101:12: Renamed 'tf.summary.scalar' to 'tf.compat.v1.summary.scalar'
+INFO line 104:41: Renamed 'tf.get_collection' to 'tf.compat.v1.get_collection'
+INFO line 104:59: Renamed 'tf.GraphKeys' to 'tf.compat.v1.GraphKeys'
+INFO line 105:31: Renamed 'tf.train.AdamOptimizer' to 'tf.compat.v1.train.AdamOptimizer'
+INFO line 106:56: Renamed 'tf.trainable_variables' to 'tf.compat.v1.trainable_variables'
+INFO line 111:8: tf.summary.scalar requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 111:8: Renamed 'tf.summary.scalar' to 'tf.compat.v1.summary.scalar'
+INFO line 115:34: Renamed 'tf.trainable_variables' to 'tf.compat.v1.trainable_variables'
+INFO line 116:41: Renamed 'tf.get_collection' to 'tf.compat.v1.get_collection'
+INFO line 116:59: Renamed 'tf.GraphKeys' to 'tf.compat.v1.GraphKeys'
+INFO line 117:31: Renamed 'tf.train.AdamOptimizer' to 'tf.compat.v1.train.AdamOptimizer'
+INFO line 145:22: Renamed 'tf.global_variables_initializer' to 'tf.compat.v1.global_variables_initializer'
+INFO line 152:22: tf.summary.merge requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 152:22: Renamed 'tf.summary.merge' to 'tf.compat.v1.summary.merge'
+INFO line 152:39: Renamed 'tf.get_collection' to 'tf.compat.v1.get_collection'
+INFO line 154:26: tf.summary.merge requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 154:26: Renamed 'tf.summary.merge' to 'tf.compat.v1.summary.merge'
+INFO line 154:43: Renamed 'tf.get_collection' to 'tf.compat.v1.get_collection'
+INFO line 156:17: tf.summary.FileWriter requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+INFO line 156:17: Renamed 'tf.summary.FileWriter' to 'tf.compat.v1.summary.FileWriter'
+INFO line 168:22: Renamed 'tf.Summary' to 'tf.compat.v1.Summary'
+INFO line 169:16: Renamed 'tf.Summary' to 'tf.compat.v1.Summary'
+INFO line 172:22: Renamed 'tf.Summary' to 'tf.compat.v1.Summary'
+INFO line 173:16: Renamed 'tf.Summary' to 'tf.compat.v1.Summary'
+WARNING line 186:16: *.save requires manual check. (This warning is only applicable if the code saves a tf.Keras model) Keras model.save now saves to the Tensorflow SavedModel format by default, instead of HDF5. To continue saving to HDF5, add the argument save_format='h5' to the save() function.
+INFO line 186:16: Renamed 'tf.train.Saver' to 'tf.compat.v1.train.Saver'
+WARNING line 191:16: *.save requires manual check. (This warning is only applicable if the code saves a tf.Keras model) Keras model.save now saves to the Tensorflow SavedModel format by default, instead of HDF5. To continue saving to HDF5, add the argument save_format='h5' to the save() function.
+INFO line 191:16: Renamed 'tf.train.Saver' to 'tf.compat.v1.train.Saver'
+INFO line 228:25: Renamed 'tf.global_variables' to 'tf.compat.v1.global_variables'
+INFO line 229:8: Renamed 'tf.train.Saver' to 'tf.compat.v1.train.Saver'
+INFO line 20:29: Added keywords to args of function 'tf.shape'
+INFO line 40:50: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+INFO line 40:50: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+INFO line 54:50: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+INFO line 54:50: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+INFO line 135:53: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+INFO line 135:53: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+INFO line 228:95: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+INFO line 228:95: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+INFO line 13:34: Added keywords to args of function 'tf.shape'
+INFO line 15:43: Added keywords to args of function 'tf.shape'
+INFO line 25:11: Added keywords to args of function 'tf.reduce_mean'
+INFO line 25:36: Renamed 'tf.layers.flatten' to 'tf.compat.v1.layers.flatten'
+INFO line 25:69: Renamed 'tf.layers.flatten' to 'tf.compat.v1.layers.flatten'
+INFO line 32:12: Added keywords to args of function 'tf.transpose'
+INFO line 36:20: Added keywords to args of function 'tf.nn.moments'
+INFO line 36:20: Renamed keyword argument for tf.nn.moments from keep_dims to keepdims
+INFO line 46:17: Added keywords to args of function 'tf.transpose'
+INFO line 49:12: Added keywords to args of function 'tf.transpose'
+INFO line 53:20: Added keywords to args of function 'tf.nn.moments'
+INFO line 53:20: Renamed keyword argument for tf.nn.moments from keep_dims to keepdims
+INFO line 63:17: Added keywords to args of function 'tf.transpose'
+INFO line 101:49: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+INFO line 101:49: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+INFO line 105:49: tf.zeros_initializer requires manual check. Initializers no longer have the dtype argument in the constructor or partition_info argument in the __call__ method.
+The calls have been converted to compat.v1 for safety (even though they may already have been correct).
+INFO line 105:49: Renamed 'tf.zeros_initializer' to 'tf.compat.v1.zeros_initializer'
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 9 files
+Detected 2 issues that require attention
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+File: audio_to_multiple_pose_gan\model.py
+--------------------------------------------------------------------------------
+audio_to_multiple_pose_gan\model.py:186:16: WARNING: *.save requires manual check. (This warning is only applicable if the code saves a tf.Keras model) Keras model.save now saves to the Tensorflow SavedModel format by default, instead of HDF5. To continue saving to HDF5, add the argument save_format='h5' to the save() function.
+audio_to_multiple_pose_gan\model.py:191:16: WARNING: *.save requires manual check. (This warning is only applicable if the code saves a tf.Keras model) Keras model.save now saves to the Tensorflow SavedModel format by default, instead of HDF5. To continue saving to HDF5, add the argument save_format='h5' to the save() function.
+
+
+Make sure to read the detailed log 'report.txt'
+

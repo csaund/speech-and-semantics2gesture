@@ -1,0 +1,10 @@
+.idea
+*.xml
+*.iml
+*.pyc
+Gestures/
+intervals_df*
+feb*
+tmp/
+video_links.csv
+*.csv
