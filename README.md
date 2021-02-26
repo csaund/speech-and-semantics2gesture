@@ -30,8 +30,9 @@ $ python -m data.download.download_youtube --base_path Gestures\ --speaker <spea
 ### Extract training data
 Start by extracting training data:
 ```
-python -m data.train_test_data_extraction.extract_data_for_training --base_dataset_path <base_path> --speaker <speaker_name> -np <number of processes> --speaker <speaker name>`
+python -m data.train_test_data_extraction.extract_data_for_training --base_dataset_path <base_path> --speaker <speaker_name>
 ```
+* Note I removed the NP argument from this command
 
 ```
 once done you should see the following directories structure:
