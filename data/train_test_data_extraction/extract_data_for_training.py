@@ -39,7 +39,7 @@ def save_video_samples(df):
             video_fn = df_interval.iloc[0]['video_fn']
             speaker_name = df_interval.iloc[0]['speaker']
             if len(df_interval) < num_frames:
-                logger.warning("interval: %s, num frames: %s. skipped"%(interval, len(df_interval)))
+                logger.warning("interval: %s, num frames: %s. skipped" % (interval, len(df_interval)))
                 continue
             poses = np.array([np.loadtxt(get_pose_path(args.base_dataset_path, row['speaker'], row['pose_fn'])) for _, row in df_interval.iterrows()])
             img_fns = np.array([get_frame_path(args.base_dataset_path, row['speaker'], row['frame_fn']) for _, row in df_interval.iterrows()])

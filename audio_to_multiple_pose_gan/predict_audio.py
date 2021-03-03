@@ -21,7 +21,7 @@ def main(args):
     audio, _ = raw_repr(audio_fn, SR)
     pose_shape = int(15 * float(audio.shape[0]) / SR)
     padded_pose_shape = pose_shape + (2**5) - pose_shape%(2**5)
-    padded_audio_shape = padded_pose_shape * SR / 15
+    padded_audio_shape = padded_pose_shape * SR // 15
     padded_audio = np.pad(audio, [0, padded_audio_shape - audio.shape[0]], mode='reflect')
 
     cfg = get_config(args.config)
