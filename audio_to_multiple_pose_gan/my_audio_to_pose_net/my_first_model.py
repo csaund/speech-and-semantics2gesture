@@ -10,9 +10,9 @@ import tensorflow as tf
 from tensorflow.keras.layers.experimental import preprocessing
 from tensorflow.keras import layers
 from tensorflow.keras import models
-from IPython import display
-import pandas as pd
-from tqdm import tqdm
+# from IPython import display
+# import pandas as pd
+# from tqdm import tqdm
 import random
 from scipy.io import wavfile
 
@@ -218,16 +218,16 @@ norm_layer = preprocessing.Normalization()      # No idea what these do but they
 input_shape = tf.squeeze(specs[0]).shape
 
 model = models.Sequential([
-    layers.Input(shape=input_shape),
-    preprocessing.Resizing(32, 32),
-    norm_layer,
-    layers.Conv1D(32, 3, activation='relu'),    # changed all these to 1D
-    layers.Conv1D(64, 3, activation='relu'),
-    layers.MaxPooling1D(),
-    layers.Dropout(0.25),
-    layers.Flatten(),
-    layers.Dense(128, activation='relu'),
-    layers.Dropout(0.5),
+    layers.Input(shape=[None, 1000]),
+    # preprocessing.Resizing(32, 32),
+    # norm_layer,
+    # layers.Conv1D(32, 3, activation='relu'),    # changed all these to 1D
+    # layers.Conv1D(64, 3, activation='relu'),
+    # layers.MaxPooling1D(),
+    # layers.Dropout(0.25),
+    # layers.Flatten(),
+    # layers.Dense(128, activation='relu'),
+    # layers.Dropout(0.5),
     layers.Dense(num_labels),
 ])
 
@@ -242,9 +242,20 @@ model.summary()
 # compile, aka define the optimizer and loss
 model.compile(
     optimizer=tf.keras.optimizers.Adam(),
-    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True),
     metrics=['accuracy'],
 )
+
+
+labs_categories = {"up": 0, "left": 1, "right": 2, "down": 3, "no": 4, "yes": 5, "go": 6, "stop": 7}
+def categorize(command: str):
+    v = np.zeros([num_labels])
+    v[labs_categories[command]] = 1.0
+    return v
+
+labs_vec = np.array([categorize(s) for s in labs])
+truncated_wavs = np.array([w[0:1000] for w in wavs])
+
 
 # end with
 # return self._dims[key].value
@@ -253,10 +264,11 @@ model.compile(
 EPOCHS = 10
 history = model.fit(
     # train_ds,
-    x=wavs, y=labs,     # currently these are raw wav and strings, but also tried converting to tensors, np arrays
+    x=truncated_wavs, y=labs_vec,     # currently these are raw wav and strings, but also tried converting to tensors, np arrays
     #validation_data=val_ds,
     epochs=EPOCHS,
     callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=2),
+    batch_size=10
 )
 
 
