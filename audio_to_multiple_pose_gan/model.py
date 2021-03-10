@@ -33,7 +33,9 @@ class PoseGAN():
     def __init__(self, args, seq_len=64):
         self.args = args
         self.sess = tf.compat.v1.Session()
+        # pose is shape None, 64 as default, and pose sample shape.
         self.real_pose = tf.compat.v1.placeholder(tf.float32, [None, seq_len, POSE_SAMPLE_SHAPE[-1]])
+        # audio is no shape.
         self.audio_A = tf.compat.v1.placeholder(tf.float32, [None, None])
         self.is_training = tf.compat.v1.placeholder(tf.bool, ())
 
@@ -42,8 +44,9 @@ class PoseGAN():
         self.fake_pose = g_func({"audio": self.audio_A, "pose": self.real_pose, "config": cfg, "args": self.args}, is_training=self.is_training)
 
         # remove base keypoint which is always [0,0]. Keeping it may ruin GANs training due discrete problems. etc.
+        # get the indeces of training keypoints to extract
         training_keypoints = self._get_training_keypoints()
-
+        # actually get the values of those keypoints.
         training_real_pose = keypoints_to_train(self.real_pose, training_keypoints)
         training_real_pose = get_sample_output_by_config(training_real_pose, cfg)
 
@@ -143,14 +146,14 @@ class PoseGAN():
         df = pd.read_csv(self.args.train_csv)
         if self.args.speaker != None:
             df = df[df['speaker'] == self.args.speaker]
+        # passes df of all speaker info (fns) to generate_batch
         train_generator, num_samples_train = load_train(process_row, batch_size, df, generate_batch, workers=3,
                                                         max_queue_size=32)
-
-        print("**************************************")
-        print("typeof train generator: ", type(train_generator))
+        # get back the generator that contains all that information.
 
         df_dev = df[df['dataset'] == 'dev'].sample(n=512, random_state=1337)
         self.sess.run(tf.compat.v1.global_variables_initializer())
+        # only if we're training from a previous checkpoint
         if hasattr(self.args, 'checkpoint') and self.args.checkpoint:
             scope_list = ['generator']
             if self.args.gans:

@@ -9,6 +9,7 @@ from audio_to_multiple_pose_gan.model import PoseGAN
 
 
 def main(args):
+    # load training dataset
     df = pd.read_csv(args.train_csv)
     df_dev = df[(df['dataset'] == args.dataset) & (df['speaker'] == args.speaker)]
 
@@ -27,7 +28,6 @@ def main(args):
         print("Creating dirs: ", args.output_path)
         try:
             os.makedirs(args.output_path)
-            print("we think we created output path")
         except(e):
             print("Could not create output path: ", args.output_path, ":", e)
     else:

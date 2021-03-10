@@ -44,6 +44,8 @@ def preprocess_x(x, config):
     return x
 
 
+# ah HA, here we find audio being labeled as x and keypoints being labeled as y...
+# so x is actually just the audio fn, TF actually takes the audio fn??
 def audio_pose_mel_spect(config, row):
     if "audio" in row:
         x = row["audio"]
@@ -62,6 +64,8 @@ def generate_batch(df, process_row, batch_size):
     X, Y = [], []
     while len(X) < batch_size:
         row = df.sample(n=1).iloc[0]
+        # this actually calls audio_pose_mel_spect on each row
+        # which preprocesses audio and relativizes keypoints of pose.
         x_sample, y_sample = process_row(row)
         X.append(x_sample)
         Y.append(y_sample)

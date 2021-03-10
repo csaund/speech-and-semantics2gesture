@@ -3,6 +3,7 @@ import tensorflow_addons as tfa
 
 def to_motion_delta(pose_batch):
     shape = pose_batch.get_shape()
+    # reshape data into what TF might like?
     reshaped = tf.reshape(pose_batch, (-1, 64, 2, shape[-1]//2))
     diff = reshaped[:, 1:] - reshaped[:, :-1]
     return tf.reshape(diff, (-1, 63, shape[-1]))
