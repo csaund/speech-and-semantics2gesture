@@ -68,15 +68,20 @@ def convert_timestamp_to_seconds(timestamp):
     return time
 
 
-def get_csv_name_from_vfn(vfn):
-    return vfn.replace('mkv', 'csv').replace('mp4', 'csv')
+def get_csv_name_from_vfn(vfn, ext='csv'):
+    return vfn.replace('mkv', ext).replace('mp4', ext)
 
+
+def extract_words_from_transcript(word_dict):
+    words = []
+    for w in word_dict:
+        words.append(w.word)
 
 def add_transcript_to_row(row):
     if row.transcript is None:
         csv_fn = os.path.join(TMP_CSV_PATH, get_csv_name_from_vfn(row.video_fn))
         if not os.path.exists(csv_fn):
-            row.transcript = 'ERROR: NO TRANSCRIPT FOUND FOR VIDEO_FN'
+            print("WARNING failed to download transcript", csv_fn)
             return row.transcript
         words_df = pd.read_csv(csv_fn)
         start_time = convert_timestamp_to_seconds(row.start)
@@ -138,14 +143,14 @@ if __name__ == "__main__":
         os.mkdir(TMP_CSV_PATH)
 
     possible_transcripts = list_blobs(TRANSCRIPT_BUCKET)
+    # for all the transcripts in the transcript bucket
     for fn in csv_fns:
-        # if it's in our transcript bucket
-        if fn in possible_transcripts:
-            # if we haven't already downloaded it
-            if not os.path.exists(os.path.join(TMP_CSV_PATH, fn)):
-                download_blob(TRANSCRIPT_BUCKET, fn, os.path.join(TMP_CSV_PATH, fn))
-        else:
-            print("no transcript found for ", fn)
+        if fn not in possible_transcripts:
+            print("WARNING no transcript found for ", fn)
+        # if we haven't already downloaded it
+        if not os.path.exists(os.path.join(TMP_CSV_PATH, fn)):
+            download_blob(TRANSCRIPT_BUCKET, fn, os.path.join(TMP_CSV_PATH, fn))
+
     tqdm.pandas()       # watch this bad boy
     df['transcript'] = df.progress_apply(lambda row: add_transcript_to_row(row), axis=1)
     # df['semantic_analysis'] = df.progress_apply(lambda row: add_semantic_analysis_to_row(row), axis=1)
