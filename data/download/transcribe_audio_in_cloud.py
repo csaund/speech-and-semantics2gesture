@@ -29,8 +29,6 @@ parser.add_argument('-speaker', '--speaker',
                     help='download videos of a specific speaker {oliver, jon, conan, rock, chemistry, ellen, almaram, angelica, seth, shelly}')
 args = parser.parse_args()
 
-video_iterator = 0      # disgusting hack
-
 AUDIO_INPUT_PATH = args.audio_path
 AUDIO_BUCKET = "audio_bucket_rock_1"
 TRANSCRIPT_BUCKET = "audio_transcript_buckets_1"
