@@ -72,7 +72,7 @@ These currently upload audio to `audio_bucket_rock_1` and csv to `audio_transcri
 After you have extracted `train.csv` and have all audio data for a speaker uploaded to a 
 cloud bucket, run
 ```
-python -m data.download.text_gesture_interval_matcher --train_csv <path to train csv> 
+python -m data.download.text_gesture_interval_matcher --train_csv <path to train csv> --base_path <base path to TRAINING data>
 ```
 This searches the transcript bucket for filenames that match the `video_fn` and `audio_fn`
 in the training csv, then adds the words and semantic analysis of those words based 

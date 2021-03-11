@@ -41,12 +41,14 @@ ctx.project_id = 'scenic-arc-250709'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-train_csv', '--train_csv', help='where the training csv lives')
+parser.add_argument('-base_path', '--base_path', help='where is the base path for TRAINING data? is it Gestures/<speaker> ?')
 parser.add_argument('-speaker', '--speaker',
                     help='download videos of a specific speaker {oliver, jon, conan, rock, chemistry, ellen, almaram, angelica, seth, shelly}')
 args = parser.parse_args()
 
 TRANSCRIPT_BUCKET = "audio_transcript_buckets_1"
-TMP_CSV_PATH = "tmp_csv_path"
+TMP_CSV_PATH = "tmp_csv_files"
+BASE_PATH = args.base_path
 
 ## input looks like this:
 # dataset,start,end,interval_id,pose_fn,audio_fn,video_fn,speaker
@@ -118,6 +120,8 @@ def list_blobs(bucket_name):
     return f_names
 
 
+# Holy heck it works.
+# TODO: make it output to the training spot instead of cur working dir
 if __name__ == "__main__":
     df = pd.read_csv(args.train_csv)
     if 'transcript' not in df.columns:
@@ -131,7 +135,7 @@ if __name__ == "__main__":
     csv_fns = [get_csv_name_from_vfn(v) for v in video_fns]
 
     if not os.path.exists(TMP_CSV_PATH):
-        os.mkdir(TMP_CSV_PATH)        # TODO MUST REMEMBER TO DELETE THIS!!!
+        os.mkdir(TMP_CSV_PATH)
 
     possible_transcripts = list_blobs(TRANSCRIPT_BUCKET)
     for fn in csv_fns:
@@ -144,5 +148,9 @@ if __name__ == "__main__":
             print("no transcript found for ", fn)
     tqdm.pandas()       # watch this bad boy
     df['transcript'] = df.progress_apply(lambda row: add_transcript_to_row(row), axis=1)
-    # df.apply(add_semantic_analysis_to_row, axis=1)
-    # os.rmdir(TMP_CSV_PATH)
+    # df['semantic_analysis'] = df.progress_apply(lambda row: add_semantic_analysis_to_row(row), axis=1)
+
+    output_csv = 'training_with_semantics.csv'
+    df.to_csv(os.path.join(BASE_PATH, output_csv))
+
+    shutil.rmtree(TMP_CSV_PATH)
