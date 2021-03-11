@@ -84,3 +84,4 @@ on matching the timestamps of the gestures. The output is stored in
 * make scrape, upload, and transcription scripts take bucket name as input.
 * pull out google cloud helpers.
 * update all to work on previously transcribed files.
+* Delete all `.json` files from cloud transcripts!!!!
