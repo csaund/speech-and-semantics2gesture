@@ -18,11 +18,12 @@ from google.cloud import speech
 import datalab.storage as gcs
 # TODO : CARO GET RID OF THIS
 from google.datalab import Context as ctx
+import csv
 
 ctx.project_id = 'scenic-arc-250709'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-base_path', '--base_path', help='base folder path of dataset')
+parser.add_argument('-csv_output_path', '--csv_output_path', help='where to output the csv files')
 parser.add_argument('-audio_path', '--audio_path', help='path to local audio files to transcribe (folder must contain filenames that match the gcloud transcript names')
 parser.add_argument('-speaker', '--speaker',
                     help='download videos of a specific speaker {oliver, jon, conan, rock, chemistry, ellen, almaram, angelica, seth, shelly}')
@@ -32,7 +33,7 @@ video_iterator = 0      # disgusting hack
 
 AUDIO_INPUT_PATH = args.audio_path
 AUDIO_BUCKET = "audio_bucket_rock_1"
-TRANSCRIPT_BUCKET = "transcript_buckets_1"
+TRANSCRIPT_BUCKET = "audio_transcript_buckets_1"
 
 storage_client = storage.Client()
 devKey = str(open("%s/devKey" % os.getenv("HOME"), "r").read()).strip()
@@ -42,13 +43,6 @@ service = build('language', 'v1', developerKey=devKey)
 collection = service.documents()
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "%s/google-creds.json" % os.getenv("HOME")
-print("literally anything")
-
-# Then, transcribes the audio into a separate bucket.
-def stereo_to_mono(audio_file_path):
-    sound = AudioSegment.from_wav(audio_file_path)
-    sound = sound.set_channels(1)
-    sound.export(audio_file_path, format="wav")
 
 
 def frame_rate_channel(audio_file_path):
@@ -66,6 +60,15 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name):
     blob.upload_from_filename(source_file_name)
 
 
+# converts of list of dicts with the same keys to a csv file.
+def words_to_csv(toCSV, csv_path):
+    keys = toCSV[0].keys()
+    with open(csv_path, 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, keys)
+        dict_writer.writeheader()
+        dict_writer.writerows(toCSV)
+
+
 def google_transcribe(fn, fp):
     print("attempting to transcribe file %s" % fn)
 
@@ -78,12 +81,12 @@ def google_transcribe(fn, fp):
 
     gcs_uri = 'gs://' + AUDIO_BUCKET + '/' + fn
 
-    # frame_rate, channels = frame_rate_channel(fp)
+    frame_rate, channels = frame_rate_channel(fp)
     client = speech.SpeechClient()
     audio = speech.RecognitionAudio(uri=gcs_uri)
     config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.FLAC,
-        sample_rate_hertz=16000,
+        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=frame_rate,
         language_code='en-US',
         enable_word_time_offsets=True,
         enable_automatic_punctuation=True)
@@ -95,47 +98,31 @@ def google_transcribe(fn, fp):
 
     # Each result is for a consecutive portion of the audio. Iterate through
     # them to get the transcripts for the entire audio file.
-    transcript = {}
-    i = 0
+    words = []
     for result in response.results:
-        i += 1
-        print("result: ", result)
-        print(u"Transcript: {}".format(result.alternatives[0].transcript))
-        print("Confidence: {}".format(result.alternatives[0].confidence))
-        out = {
-            'transcript': result.alternatives[0].transcript,
-            'confidence': result.alternatives[0].confidence
-        }
-        transcript[i] = out
+        for w in result.alternatives[0].words:
+            words.append({
+                'word': w.word,
+                'start_time': w.start_time.seconds + (w.start_time.microseconds / 1000000),  # dis some bullshit where it looks like it's nanos
+                'end_time': w.end_time.seconds + (w.end_time.microseconds / 1000000)        # but its a datetime obj so it's microseconds.
+            })
 
-    ## TODO uncomment/implement if I want to do this.
     # this resource is brilliant:
     # https://towardsdatascience.com/how-to-use-google-speech-to-text-api-to-transcribe-long-audio-files-1c886f4eb3e9
-    # delete_blob(bucket_name, destination_blob_name)
-    print("got transcript", transcript)
-    return pd.DataFrame.from_dict(transcript)
+    return words
 
 
-def upload_transcript_to_gcloud():
-    audios_list = os.listdir(AUDIO_OUTPUT_PATH)
-
-    for audio_fn in audios_list:
-        destination_bucket = 'audio_bucket_rock_1'
-        destination_name = audio_fn
-        print("uploading %s to %s" % (audio_fn, destination_bucket))
-        audio_fp = os.path.join(AUDIO_OUTPUT_PATH, audio_fn)
-        # frame_rate, channels = frame_rate_channel(audio_fp)
-        # if channels > 1:
-        #     stereo_to_mono(audio_fp)
-
-        # upload so we can get a gcs for long audio transcription.
-        upload_blob(destination_bucket, audio_fp, destination_name)
-
+# works but overall a bit hacky re: bucket names, gc permissions, etc
 if __name__ == "__main__":
     audios_list = os.listdir(AUDIO_INPUT_PATH)
-    # make df that we can then pickle and upload to cloud
     for audio_fn in audios_list:
-        print("this should fully print first.")
-        transcript_df = google_transcribe(audio_fn, os.path.join(AUDIO_INPUT_PATH, audio_fn))
+        # transcribe the file we previously scraped and uploaded
+        words = google_transcribe(audio_fn, os.path.join(AUDIO_INPUT_PATH, audio_fn))
+
+        # save the words to a csv we can then upload.
+        csv_name = audio_fn.replace('wav', 'csv')
+        csv_path = os.path.join(args.csv_output_path, csv_name)
+        words_to_csv(words, csv_path=csv_path)
+
         # Upload transcript to cloud
-        gcs.Bucket(TRANSCRIPT_BUCKET).item('to/data.csv').write_to(transcript_df.to_csv(), 'text/csv')
+        upload_blob(TRANSCRIPT_BUCKET, csv_path, csv_name)

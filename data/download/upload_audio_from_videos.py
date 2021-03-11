@@ -29,9 +29,9 @@ parser.add_argument('-sc', '--scrape', action='store_false')
 parser.add_argument('-u', '--upload', action='store_false')
 args = parser.parse_args()
 
-#VIDEOS_PATH = os.path.join(args.base_dataset_path, args.speaker, 'videos')
+VIDEOS_PATH = os.path.join(args.base_dataset_path, args.speaker, 'videos')
 AUDIO_OUTPUT_PATH = args.output_path
-#AUDIO_FN_TEMPLATE = os.path.join(args.base_dataset_path, '%s', 'train', 'audio', '%s_%s_%s-%s.wav')
+# AUDIO_FN_TEMPLATE = os.path.join(args.base_dataset_path, '%s', 'train', 'audio', '%s_%s_%s-%s.wav')
 
 
 # From speaker with videos downloaded (basepath/Gestures/<speaker>/videos), scrapes audio from videos and
@@ -67,44 +67,25 @@ def scrape_audio_from_videos():
     for video_fn in videos_list:
         video_path = os.path.join(VIDEOS_PATH, video_fn)
         output_audio_path = os.path.join(AUDIO_OUTPUT_PATH, video_fn)
+        output_audio_path = output_audio_path.replace('mkv', 'wav').replace('mp4', 'wav')
         command = ("ffmpeg -i %s -ab 160k -ac 2 -ar 48000 -vn %s" % (video_path, output_audio_path))
         proc = subprocess.Popen(command, shell=True)
         proc.wait()
-        fn_mp3 = video_fn.replace('mkv', 'mp3')
-        fn_mp3 = fn_mp3.replace('mp4', 'mp3')
-        scraped_vid_path = os.join(output_audio_path, video_fn)
-        scraped_audio_path = os.join(output_audio_path, fn_mp3)
-        command = ("ffmpeg -i %s %s" % (scraped_vid_path, scraped_audio_path))
-        proc = subprocess.Popen(command, shell=True)
-        proc.wait()
 
 
-def convert_from_mp4_to_mp3(fn):
-    if 'mp3' in fn:
-        print("already had mp3: ", fn)
-        return
-    fn_mp3 = fn.replace('mkv', 'mp3')
-    fn_mp3 = fn_mp3.replace('mp4', 'mp3')
-    command = ("ffmpeg -i %s %s" % (fn, fn_mp3))
-    proc = subprocess.Popen(command, shell=True)
-    proc.wait()
-
-
-def upload_audio_to_gcloud(audios_names_list, fp, bucket_name='csaund_almaram'):
+def upload_audio_to_gcloud(audios_names_list, fp, bucket_name):
     destination_bucket = bucket_name
     for audio_fn in audios_names_list:
-        if 'mp3' not in audio_fn:
-            continue
-        else:
-            destination_name = audio_fn
-            print("uploading %s to %s" % (audio_fn, destination_bucket))
-            audio_fp = os.path.join(fp, audio_fn)
-            # frame_rate, channels = frame_rate_channel(audio_fp)
-            # if channels > 1:
-            #     stereo_to_mono(audio_fp)
+        destination_name = audio_fn
+        print("uploading %s to %s" % (audio_fn, destination_bucket))
+        audio_fp = os.path.join(fp, audio_fn)
+        # long running transcribe only works on mono
+        frame_rate, channels = frame_rate_channel(audio_fp)
+        if channels > 1:
+            stereo_to_mono(audio_fp)
 
-            # upload so we can get a gcs for long audio transcription.
-            upload_blob(destination_bucket, audio_fp, destination_name)
+        # upload so we can get a gcs for long audio transcription.
+        upload_blob(destination_bucket, audio_fp, destination_name)
 
 
 def create_audio_path(op):
@@ -116,16 +97,11 @@ def remove_audio_path(op):
     shutil.rmtree(op)
 
 
-print("args: ", args.scrape, args.upload)
-#if args.scrape is not None:
-#    print("")
-#    print("trying to scrape")
-#    print("")
-#    create_audio_path(args.output_path)
-#    scrape_audio_from_videos()
-if args.upload is not None:
-    print("")
-    print("trying to upload")
-    print("")
-    audio_list = os.listdir(AUDIO_OUTPUT_PATH)
-    upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, 'audio_bucket_rock_1')
+if __name__ == "__main__":
+    print("args: ", args.scrape, args.upload)
+    if args.scrape is not None:
+        create_audio_path(args.output_path)
+        scrape_audio_from_videos()
+    if args.upload is not None:
+        audio_list = os.listdir(AUDIO_OUTPUT_PATH)
+        upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name='audio_bucket_rock_1')
