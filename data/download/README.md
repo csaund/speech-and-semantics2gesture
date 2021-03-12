@@ -68,20 +68,30 @@ to do this by running one after the other, and with the same path being passed a
 These currently upload audio to `audio_bucket_rock_1` and csv to `audio_transcript_bucket_1`
 
 
+#### For older transcriptions
+Because I was a big dumb dummy when I did the last round of transcriptions, we need to convert 
+older transcripts to be the new csv format. This was hopefully a one-time process, 
+but worth documenting here for posterity. 
+```
+python -m data.download.convert_json_transcripts_to_csv 
+```
+This just took all the json transcripts sitting in the transcript bucket and converted them to 
+word csvs so that the information can be matched more easily. 
+
+
 ### And they all lived happily ever after.
 After you have extracted `train.csv` and have all audio data for a speaker uploaded to a 
 cloud bucket, run
 ```
 python -m data.download.text_gesture_interval_matcher --train_csv <path to train csv> --base_path <base path to TRAINING data>
 ```
-This searches the transcript bucket for filenames that match the `video_fn` and `audio_fn`
+This searches the transcript bucket for filenames that match the `video_fn` 
 in the training csv, then adds the words and semantic analysis of those words based 
-on matching the timestamps of the gestures. The output is stored in 
-`training_with_semantics.csv` next to the input csv.
+on matching the timestamps of the gestures extracted for training. The output is stored in 
+`training_with_semantics.csv`along the base path.
 
 
 ##### TODO:
 * make scrape, upload, and transcription scripts take bucket name as input.
 * pull out google cloud helpers.
-* update all to work on previously transcribed files.
 * Delete all `.json` files from cloud transcripts!!!!

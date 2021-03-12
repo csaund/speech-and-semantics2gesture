@@ -31,7 +31,6 @@ if __name__ == "__main__":
             input_fn = os.path.join(args.base_path, interval['speaker'], "videos", interval["video_fn"])
             output_fn = os.path.join(args.output_path, "%s_%s_%s-%s.mp4" % (interval["speaker"], interval["video_fn"], str(start_time), str(end_time)))
             output_fn = output_fn.replace(':', '_')
-            print("input/output: ", input_fn, " ******************* ", output_fn)
             save_interval(input_fn, str(start_time), str(end_time), output_fn)
         except Exception as e:
             print(e)

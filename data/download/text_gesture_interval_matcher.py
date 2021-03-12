@@ -77,12 +77,13 @@ def extract_words_from_transcript(word_dict):
     for w in word_dict:
         words.append(w.word)
 
+
 def add_transcript_to_row(row):
     if row.transcript is None:
         csv_fn = os.path.join(TMP_CSV_PATH, get_csv_name_from_vfn(row.video_fn))
         if not os.path.exists(csv_fn):
             print("WARNING failed to download transcript", csv_fn)
-            return row.transcript
+            return ''
         words_df = pd.read_csv(csv_fn)
         start_time = convert_timestamp_to_seconds(row.start)
         end_time = convert_timestamp_to_seconds(row.end)

@@ -10,6 +10,7 @@ from pydub import AudioSegment
 ## Google stuff
 from google.cloud import storage
 import shutil
+from tqdm import tqdm
 
 devKey = str(open(os.path.join(os.getenv("HOME"), "devKey"), "r").read()).strip()
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(os.getenv("HOME"), 'google-creds.json')
@@ -64,12 +65,14 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name):
 # stores in google cloud
 def scrape_audio_from_videos():
     videos_list = os.listdir(VIDEOS_PATH)
-    for video_fn in videos_list:
+    for video_fn in tqdm(videos_list):
         video_path = os.path.join(VIDEOS_PATH, video_fn)
         output_audio_path = os.path.join(AUDIO_OUTPUT_PATH, video_fn)
         output_audio_path = output_audio_path.replace('mkv', 'wav').replace('mp4', 'wav')
         command = ("ffmpeg -i %s -ab 160k -ac 2 -ar 48000 -vn %s" % (video_path, output_audio_path))
-        proc = subprocess.Popen(command, shell=True)
+        proc = subprocess.Popen(command, shell=True,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.STDOUT)
         proc.wait()
 
 

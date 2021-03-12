@@ -91,7 +91,6 @@ def google_transcribe(fn, fp):
 
     # Detects speech in the audio file
     operation = client.long_running_recognize(config=config, audio=audio)
-    print("getting results...")
     response = operation.result(timeout=1000)
 
     # Each result is for a consecutive portion of the audio. Iterate through
@@ -113,7 +112,7 @@ def google_transcribe(fn, fp):
 # works but overall a bit hacky re: bucket names, gc permissions, etc
 if __name__ == "__main__":
     audios_list = os.listdir(AUDIO_INPUT_PATH)
-    for audio_fn in audios_list:
+    for audio_fn in tqdm(audios_list):
         # transcribe the file we previously scraped and uploaded
         words = google_transcribe(audio_fn, os.path.join(AUDIO_INPUT_PATH, audio_fn))
 
