@@ -64,6 +64,7 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name):
 # Goes into <base_path>/<speaker>/videos and scrapes audio
 # stores in google cloud
 def scrape_audio_from_videos():
+    print("Scarping audio from videos")
     videos_list = os.listdir(VIDEOS_PATH)
     for video_fn in tqdm(videos_list):
         video_path = os.path.join(VIDEOS_PATH, video_fn)
@@ -77,8 +78,9 @@ def scrape_audio_from_videos():
 
 
 def upload_audio_to_gcloud(audios_names_list, fp, bucket_name):
+    print("Uploading audio to google cloud")
     destination_bucket = bucket_name
-    for audio_fn in audios_names_list:
+    for audio_fn in tqdm(audios_names_list):
         destination_name = audio_fn
         print("uploading %s to %s" % (audio_fn, destination_bucket))
         audio_fp = os.path.join(fp, audio_fn)

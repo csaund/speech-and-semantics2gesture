@@ -105,7 +105,8 @@ if must_transcribe:
     upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name='audio_bucket_rock_1')
 
     # transcribe once it's in the cloud
-    for audio_fn in audio_list:
+    print("transcribing audio in cloud")
+    for audio_fn in tqdm(audio_list):
         # transcribe the file we previously scraped and uploaded
         words = google_transcribe(audio_fn, os.path.join(AUDIO_OUTPUT_PATH, audio_fn))
 
