@@ -63,11 +63,11 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name):
 
 # Goes into <base_path>/<speaker>/videos and scrapes audio
 # stores in google cloud
-def scrape_audio_from_videos():
+def scrape_audio_from_videos(videos_path=VIDEOS_PATH):
     print("Scarping audio from videos")
-    videos_list = os.listdir(VIDEOS_PATH)
+    videos_list = os.listdir(videos_path)
     for video_fn in tqdm(videos_list):
-        video_path = os.path.join(VIDEOS_PATH, video_fn)
+        video_path = os.path.join(videos_path, video_fn)
         output_audio_path = os.path.join(AUDIO_OUTPUT_PATH, video_fn)
         output_audio_path = output_audio_path.replace('mkv', 'wav').replace('mp4', 'wav')
         command = ("ffmpeg -i %s -ab 160k -ac 2 -ar 48000 -vn %s" % (video_path, output_audio_path))
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     print("args: ", args.scrape, args.upload)
     if args.scrape is not None:
         create_audio_path(args.output_path)
-        scrape_audio_from_videos()
+        scrape_audio_from_videos(VIDEOS_PATH)
     if args.upload is not None:
         audio_list = os.listdir(AUDIO_OUTPUT_PATH)
         upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name='audio_bucket_rock_1')

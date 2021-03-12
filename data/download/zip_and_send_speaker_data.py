@@ -89,6 +89,7 @@ if not os.path.exists(videos_path) or len(os.listdir(videos_path)) > 0:
 
 # videos should all be downloaded to videos_path, now just check if there is a transcript
 csv_fns = [v.replace('mkv', 'csv').replace('mp4', 'csv') for v in os.listdir(videos_path)]
+audio_fns = [v.replace('mkv', 'wav').replace('mp4', 'wav') for v in os.listdir(videos_path)]
 existing_transcripts = list_blobs(TRANSCRIPT_BUCKET)
 must_transcribe = False
 
@@ -100,7 +101,7 @@ for fn in csv_fns:
 if must_transcribe:
     # scrape and upload the audio to gcloud
     create_audio_path(args.output_path)
-    scrape_audio_from_videos()
+    scrape_audio_from_videos(videos_path)
     audio_list = os.listdir(AUDIO_OUTPUT_PATH)
     upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name='audio_bucket_rock_1')
 
@@ -117,5 +118,4 @@ if must_transcribe:
 
         # Upload transcript to cloud
         upload_blob(TRANSCRIPT_BUCKET, csv_path, csv_name)
-
 

@@ -21,15 +21,6 @@ from google.datalab import Context as ctx
 import csv
 
 ctx.project_id = 'scenic-arc-250709'
-
-parser = argparse.ArgumentParser()
-parser.add_argument('-csv_output_path', '--csv_output_path', help='where to output the csv files')
-parser.add_argument('-audio_path', '--audio_path', help='path to local audio files to transcribe (folder must contain filenames that match the gcloud transcript names')
-parser.add_argument('-speaker', '--speaker',
-                    help='download videos of a specific speaker {oliver, jon, conan, rock, chemistry, ellen, almaram, angelica, seth, shelly}')
-args = parser.parse_args()
-
-AUDIO_INPUT_PATH = args.audio_path
 AUDIO_BUCKET = "audio_bucket_rock_1"
 TRANSCRIPT_BUCKET = "audio_transcript_buckets_1"
 
@@ -56,6 +47,18 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name):
     bucket = storage_client.get_bucket(bucket_name)
     blob = bucket.blob(destination_blob_name)
     blob.upload_from_filename(source_file_name)
+
+
+def list_blobs(bucket_name):
+    """Lists all the blobs in the bucket."""
+    # bucket_name = "your-bucket-name"
+    storage_client = storage.Client()
+    # Note: Client.list_blobs requires at least package version 1.17.0.
+    blobs = storage_client.list_blobs(bucket_name)
+    f_names = []
+    for blob in blobs:
+        f_names.append(blob.name)
+    return f_names
 
 
 # converts of list of dicts with the same keys to a csv file.
@@ -111,13 +114,30 @@ def google_transcribe(fn, fp):
 
 # works but overall a bit hacky re: bucket names, gc permissions, etc
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-csv_output_path', '--csv_output_path', help='where to output the csv files')
+    parser.add_argument('-audio_path', '--audio_path',
+                        help='path to local audio files to transcribe (folder must contain filenames that match the gcloud transcript names')
+    parser.add_argument('-speaker', '--speaker',
+                        help='download videos of a specific speaker {oliver, jon, conan, rock, chemistry, ellen, almaram, angelica, seth, shelly}')
+    args = parser.parse_args()
+
+    AUDIO_INPUT_PATH = args.audio_path
+
     audios_list = os.listdir(AUDIO_INPUT_PATH)
+    available_audio = list_blobs(AUDIO_BUCKET)
     for audio_fn in tqdm(audios_list):
         # transcribe the file we previously scraped and uploaded
+        if audio_fn not in available_audio:
+            print("no cloud wav file found for ", audio_fn)
+            continue
+
         words = google_transcribe(audio_fn, os.path.join(AUDIO_INPUT_PATH, audio_fn))
 
         # save the words to a csv we can then upload.
         csv_name = audio_fn.replace('wav', 'csv')
+        if not os.path.exists(args.csv_output_path):
+            os.mkdir(args.csv_output_path)
         csv_path = os.path.join(args.csv_output_path, csv_name)
         words_to_csv(words, csv_path=csv_path)
 
