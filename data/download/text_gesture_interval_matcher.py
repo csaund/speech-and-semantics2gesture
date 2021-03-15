@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 import wave
 from pydub import AudioSegment
+from common.google_helpers import list_blobs, download_blob
 from google.cloud import storage
 from google.cloud import speech
 import datalab.storage as gcs
@@ -23,8 +24,8 @@ from tqdm import tqdm, tqdm_pandas
 tqdm_pandas(tqdm())
 
 ## the module that takes in intervals_df and looks in the transcript to assign
-## the raw text that matches that gesture, and does further semantic mapping of that text
-## and outputs the resulting csv into intervals_with_semantics_df.csv.
+## the raw text that matches that gesture
+## and outputs the resulting csv into train_with_text.csv.
 
 
 ## reads intervals_df into pd df
@@ -38,6 +39,16 @@ tqdm_pandas(tqdm())
 
 
 ctx.project_id = 'scenic-arc-250709'
+
+
+storage_client = storage.Client()
+devKey = str(open("%s/devKey" % os.getenv("HOME"), "r").read()).strip()
+
+from apiclient.discovery import build
+service = build('language', 'v1', developerKey=devKey)
+collection = service.documents()
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "%s/google-creds.json" % os.getenv("HOME")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-train_csv', '--train_csv', help='where the training csv lives')
@@ -69,7 +80,7 @@ def convert_timestamp_to_seconds(timestamp):
 
 
 def get_csv_name_from_vfn(vfn, ext='csv'):
-    return vfn.replace('mkv', ext).replace('mp4', ext)
+    return vfn.replace('mkv', ext).replace('mp4', ext).replace('webm', ext)
 
 
 def extract_words_from_transcript(word_dict):
@@ -84,7 +95,11 @@ def add_transcript_to_row(row):
         if not os.path.exists(csv_fn):
             print("WARNING failed to download transcript", csv_fn)
             return ''
-        words_df = pd.read_csv(csv_fn)
+        try:
+            words_df = pd.read_csv(csv_fn)
+        except Exception as e:
+            print('WARNING: unable to parse csv file: ', e)
+            return ''
         start_time = convert_timestamp_to_seconds(row.start)
         end_time = convert_timestamp_to_seconds(row.end)
         relevant_words = words_df.loc[(words_df['start_time'] >= start_time) & (words_df['end_time'] <= end_time)]
@@ -101,29 +116,6 @@ def add_semantic_analysis_to_row(row):
     # add the analysis
     # win the day
     raise NotImplementedError
-
-
-def download_blob(bucket_name, source_blob_name, destination_file_name):
-    """Downloads a blob from the bucket."""
-    storage_client = storage.Client()
-    bucket = storage_client.get_bucket(bucket_name)
-    blob = bucket.blob(source_blob_name)
-    blob.download_to_filename(destination_file_name)
-    print('Blob {} downloaded to {}.'.format(
-        source_blob_name,
-        destination_file_name))
-
-
-def list_blobs(bucket_name):
-    """Lists all the blobs in the bucket."""
-    # bucket_name = "your-bucket-name"
-    storage_client = storage.Client()
-    # Note: Client.list_blobs requires at least package version 1.17.0.
-    blobs = storage_client.list_blobs(bucket_name)
-    f_names = []
-    for blob in blobs:
-        f_names.append(blob.name)
-    return f_names
 
 
 # Holy heck it works.
@@ -148,15 +140,19 @@ if __name__ == "__main__":
     for fn in csv_fns:
         if fn not in possible_transcripts:
             print("WARNING no transcript found for ", fn)
+            continue
         # if we haven't already downloaded it
         if not os.path.exists(os.path.join(TMP_CSV_PATH, fn)):
-            download_blob(TRANSCRIPT_BUCKET, fn, os.path.join(TMP_CSV_PATH, fn))
+            try:
+                download_blob(TRANSCRIPT_BUCKET, fn, os.path.join(TMP_CSV_PATH, fn))
+            except:
+                print("unable to download transcript ", fn)
 
     tqdm.pandas()       # watch this bad boy
     df['transcript'] = df.progress_apply(lambda row: add_transcript_to_row(row), axis=1)
     # df['semantic_analysis'] = df.progress_apply(lambda row: add_semantic_analysis_to_row(row), axis=1)
 
-    output_csv = 'training_with_semantics.csv'
+    output_csv = 'training_with_text.csv'
     df.to_csv(os.path.join(BASE_PATH, output_csv))
 
     shutil.rmtree(TMP_CSV_PATH)

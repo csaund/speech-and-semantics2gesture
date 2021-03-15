@@ -26,13 +26,8 @@ if args.speaker:
 
 temp_output_path = os.path.join('tmp', 'temp_video.mp4')
 
-print("DF SHAPE!!!!!")
-print(df.shape)
-video_iterator = 0      # disgusting hack
 
-
-
-_handle_pat = re.compile(r'(.*?)\s+pid:\s+(\d+).*[0-9a-fA-F]+:\s+(.*)')
+handle_pat = re.compile(r'(.*?)\s+pid:\s+(\d+).*[0-9a-fA-F]+:\s+(.*)')
 
 
 def open_files(name):
@@ -42,10 +37,10 @@ def open_files(name):
     results = (_handle_pat.match(line.decode('mbcs')) for line in lines)
     return [m.groups() for m in results if m]
 
+
 def download_vids(df):
     video_iterator = 0  # disgusting hack
     for _, row in tqdm(df.iterrows(), total=df.shape[0]):
-        print(row)
         i, name, link = row
         video_iterator += 1
         temp_output_path_iterated = temp_output_path + '_' + str(video_iterator)           # so gross
@@ -57,9 +52,7 @@ def download_vids(df):
                 if not (os.path.exists(os.path.dirname(output_path))):
                     os.makedirs(os.path.dirname(output_path))
                 command = 'youtube-dl -o {temp_path} -f mp4 {link}'.format(link=link, temp_path=temp_output_path_iterated)
-                proc1 = subprocess.Popen(command, shell=True,
-                                         stdout=subprocess.DEVNULL,
-                                         stderr=subprocess.STDOUT)
+                proc1 = subprocess.Popen(command, shell=True)
                 proc1.wait()
                 proc1.terminate()
                 cam = cv2.VideoCapture(temp_output_path_iterated)

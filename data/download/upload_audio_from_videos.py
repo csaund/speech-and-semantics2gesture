@@ -22,7 +22,7 @@ collection = service.documents()
 
 
 parser = argparse.ArgumentParser(description='Description of your program')
-parser.add_argument('-b', '--base_dataset_path', help="dataset root path")
+parser.add_argument('-b', '--base_path', help="dataset root path")
 parser.add_argument('-np', '--num_processes', type=int, default=1)
 parser.add_argument('-s', '--speaker', default=None)
 parser.add_argument('-o', '--output_path', default=None)
@@ -30,7 +30,7 @@ parser.add_argument('-sc', '--scrape', action='store_false')
 parser.add_argument('-u', '--upload', action='store_false')
 args = parser.parse_args()
 
-VIDEOS_PATH = os.path.join(args.base_dataset_path, args.speaker, 'videos')
+VIDEOS_PATH = os.path.join(args.base_path, args.speaker, 'videos')
 AUDIO_OUTPUT_PATH = args.output_path
 # AUDIO_FN_TEMPLATE = os.path.join(args.base_dataset_path, '%s', 'train', 'audio', '%s_%s_%s-%s.wav')
 
@@ -69,7 +69,7 @@ def scrape_audio_from_videos(videos_path=VIDEOS_PATH):
     for video_fn in tqdm(videos_list):
         video_path = os.path.join(videos_path, video_fn)
         output_audio_path = os.path.join(AUDIO_OUTPUT_PATH, video_fn)
-        output_audio_path = output_audio_path.replace('mkv', 'wav').replace('mp4', 'wav')
+        output_audio_path = output_audio_path.replace('mkv', 'wav').replace('mp4', 'wav').replace('webm', 'wav')
         command = ("ffmpeg -i %s -ab 160k -ac 2 -ar 48000 -vn %s" % (video_path, output_audio_path))
         proc = subprocess.Popen(command, shell=True,
                                 stdout=subprocess.DEVNULL,

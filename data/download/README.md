@@ -89,8 +89,15 @@ python -m data.download.text_gesture_interval_matcher --train_csv <path to train
 This searches the transcript bucket for filenames that match the `video_fn` 
 in the training csv, then adds the words and semantic analysis of those words based 
 on matching the timestamps of the gestures extracted for training. The output is stored in 
-`training_with_semantics.csv`along the base path.
+`train_wioth_text.csv` along the base path.
 
+Finally, to add semantic analysis, run:
+```
+python -m data.word_processing.add_semantic_analysis_to_train --base_path Gestures/ --train_csv <path to train_with_text.csv>
+```
+this adds the semantic analysis, including
+* raw text vectorization
+* wordnet relevant categories
 
 ##### TODO:
 * make scrape, upload, and transcription scripts take bucket name as input.
