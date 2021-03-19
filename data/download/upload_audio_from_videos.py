@@ -55,14 +55,6 @@ def frame_rate_channel(audio_file_path):
     return frame_rate, channels
 
 
-def upload_blob(bucket_name, source_file_name, destination_blob_name):
-    """Uploads a file to the bucket."""
-    storage_client = storage.Client()
-    bucket = storage_client.get_bucket(bucket_name)
-    blob = bucket.blob(destination_blob_name)
-    blob.upload_from_filename(source_file_name)
-
-
 # Goes into <base_path>/<speaker>/videos and scrapes audio
 # stores in google cloud
 def scrape_audio_from_videos(videos_path=VIDEOS_PATH):
@@ -80,20 +72,24 @@ def scrape_audio_from_videos(videos_path=VIDEOS_PATH):
         proc.wait()
 
 
-def upload_audio_to_gcloud(audios_names_list, fp, bucket_name):
+def upload_audio_to_gcloud(audios_names_list, fp, destination_bucket):
     print("Uploading audio to google cloud")
-    destination_bucket = bucket_name
+    audio_files = list_blobs(destination_bucket)
     for audio_fn in tqdm(audios_names_list):
         destination_name = audio_fn
-        print("uploading %s to %s" % (audio_fn, destination_bucket))
-        audio_fp = os.path.join(fp, audio_fn)
-        # long running transcribe only works on mono
-        frame_rate, channels = frame_rate_channel(audio_fp)
-        if channels > 1:
-            stereo_to_mono(audio_fp)
+        if audio_fn in audio_files:
+            print("already found ", audio_fn, " in ", destination_bucket)
+            continue
+        else:
+            print("uploading %s to %s" % (audio_fn, destination_bucket))
+            audio_fp = os.path.join(fp, audio_fn)
+            # long running transcribe only works on mono
+            frame_rate, channels = frame_rate_channel(audio_fp)
+            if channels > 1:
+                stereo_to_mono(audio_fp)
 
-        # upload so we can get a gcs for long audio transcription.
-        upload_blob(destination_bucket, audio_fp, destination_name)
+            # upload so we can get a gcs for long audio transcription.
+            upload_blob(destination_bucket, audio_fp, destination_name)
 
 
 def create_audio_path(op):
@@ -112,4 +108,4 @@ if __name__ == "__main__":
         scrape_audio_from_videos(VIDEOS_PATH)
     if args.upload is not None:
         audio_list = os.listdir(AUDIO_OUTPUT_PATH)
-        upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name=AUDIO_BUCKET)
+        upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, destination_bucket=AUDIO_BUCKET)
