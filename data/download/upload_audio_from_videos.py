@@ -10,6 +10,7 @@ from pydub import AudioSegment
 ## Google stuff
 from google.cloud import storage
 import shutil
+from common.google_helpers import list_blobs, upload_blob
 from tqdm import tqdm
 
 devKey = str(open(os.path.join(os.getenv("HOME"), "devKey"), "r").read()).strip()
@@ -32,6 +33,7 @@ args = parser.parse_args()
 
 VIDEOS_PATH = os.path.join(args.base_path, args.speaker, 'videos')
 AUDIO_OUTPUT_PATH = args.output_path
+AUDIO_BUCKET = 'audio_bucket_rock_1'
 # AUDIO_FN_TEMPLATE = os.path.join(args.base_dataset_path, '%s', 'train', 'audio', '%s_%s_%s-%s.wav')
 
 
@@ -65,6 +67,7 @@ def upload_blob(bucket_name, source_file_name, destination_blob_name):
 # stores in google cloud
 def scrape_audio_from_videos(videos_path=VIDEOS_PATH):
     print("Scarping audio from videos")
+    audio_in_cloud = list
     videos_list = os.listdir(videos_path)
     for video_fn in tqdm(videos_list):
         video_path = os.path.join(videos_path, video_fn)
@@ -109,4 +112,4 @@ if __name__ == "__main__":
         scrape_audio_from_videos(VIDEOS_PATH)
     if args.upload is not None:
         audio_list = os.listdir(AUDIO_OUTPUT_PATH)
-        upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name='audio_bucket_rock_1')
+        upload_audio_to_gcloud(audio_list, AUDIO_OUTPUT_PATH, bucket_name=AUDIO_BUCKET)

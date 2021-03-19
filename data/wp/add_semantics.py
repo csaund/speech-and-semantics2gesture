@@ -14,6 +14,7 @@ import pandas as pd
 from tqdm import tqdm
 import re
 import seaborn as sns
+from data.wp.category_assignment import get_categories
 
 # todo explore difference sentence encoding model
 module_url = "https://tfhub.dev/google/universal-sentence-encoder/4"
@@ -49,10 +50,16 @@ if __name__ == "__main__":
     tqdm.pandas()       # watch this bad boy
 
     transcripts = df['transcript'].fillna('')
+    df = df.fillna('')
     embeddings = vectorization_model(transcripts)
     # so nervous about this could this be a bug????
-    df['sentence_vectorization'] = list(embeddings)
-    # df['sentence_vectorization'] = df.progress_apply(lambda row: embed(row['transcript']), axis=1)
+    if 'sentence_vectorization' not in df.columns:
+        print("getting sentence embeddings")
+        embeddings = vectorization_model(transcripts)
+        df['sentence_vectorization'] = list(embeddings)
+    if 'semantic_categories' not in df.columns:
+        print("getting semantic categories")
+        df['semantic_categories'] = df.progress_apply(lambda row: get_categories(row['transcript']), axis=1)
 
     output_csv = 'training_with_semantics.csv'
     df.to_csv(os.path.join(BASE_PATH, output_csv))
