@@ -42,7 +42,7 @@ def list_videos_for_speaker(df, speaker):
     speaker_video_links = sdf['video_fn'].unique()
     print("Got %s videos for speaker %s" % (str(len(speaker_video_links)), speaker))
     speaker_wavs = [v.replace('mp4', 'wav').replace('webm', 'wav').replace('mkv', 'wav') for v in speaker_video_links]
-    speaker_wavs_no_ext = [v.replace('mp4', '').replace('webm', '').replace('mkv', '') for v in speaker_video_links]
+    speaker_wavs_no_ext = [v.replace('.mp4', '').replace('.webm', '').replace('.mkv', '') for v in speaker_video_links]
     possible_transcripts = [w.replace('wav', 'csv') for w in speaker_wavs]
     current_wavs = list_blobs(AUDIO_BUCKET)
     current_speaker_wavs = [w for w in current_wavs if (w in speaker_wavs_no_ext or w in speaker_wavs)]

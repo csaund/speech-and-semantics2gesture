@@ -99,6 +99,14 @@ this adds the semantic analysis, including
 * raw text vectorization
 * wordnet relevant categories
 
+
+#### Appendix:
+To check how much data has been downloaded successfully, run 
+```buildoutcfg
+python -m data.download.check_cloud_data --base_path . 
+```
+this will show what percentage of videos are in the transcript bucket.
+
 ##### TODO:
 * make scrape, upload, and transcription scripts take bucket name as input.
 * pull out google cloud helpers.

@@ -31,6 +31,7 @@ np.random.seed(seed)
 # download data
 data_dir = pathlib.Path('data/mini_speech_commands')
 if not data_dir.exists():
+    print("Fetching data...")
     tf.keras.utils.get_file(
         'mini_speech_commands.zip',
         origin="http://storage.googleapis.com/download.tensorflow.org/data/mini_speech_commands.zip",
@@ -261,7 +262,7 @@ truncated_wavs = np.array([w[0:1000] for w in wavs])
 # return self._dims[key].value
 # IndexError: list index out of range
 # now fit the thing
-EPOCHS = 10
+EPOCHS = 1000
 history = model.fit(
     # train_ds,
     x=truncated_wavs, y=labs_vec,     # currently these are raw wav and strings, but also tried converting to tensors, np arrays

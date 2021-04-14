@@ -60,9 +60,7 @@ def download_vids(df):
                     shutil.move(temp_output_path_iterated, output_path)
                 else:
                     proc2 = subprocess.Popen('ffmpeg -i "%s" -r 30000/1001 -strict -2 "%s" -y' % (temp_output_path_iterated, output_path),
-                                shell=True,
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.STDOUT)
+                                shell=True)
                     proc2.wait()
                     proc2.terminate()
             except Exception as e:
