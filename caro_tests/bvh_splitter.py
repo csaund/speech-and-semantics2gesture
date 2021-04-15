@@ -11,13 +11,13 @@ module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from pymo.parsers import BVHParser
-from pymo.data import Joint, MocapData
-from pymo.preprocessing import *
-from pymo.writers import *
-from pymo.features import *
-from pymo.preprocessing import *
-from pymo.viz_tools import *
+from local_modules.pymo.parsers import BVHParser
+from local_modules.pymo.data import Joint, MocapData
+from local_modules.pymo.preprocessing import *
+from local_modules.pymo.writers import *
+from local_modules.pymo.features import *
+from local_modules.pymo.preprocessing import *
+from local_modules.pymo.viz_tools import *
 from pydub import AudioSegment
 import json
 
@@ -53,7 +53,7 @@ BVH_FPS = 0.0166667
 
 # takes list of frames to split bvh file at
 # saves as many files as splits+1
-def split_bvh_at_frames(orig_bvh, frame_splits):
+def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
     f = open(orig_bvh, "r")
 
     # create files for split
@@ -61,10 +61,10 @@ def split_bvh_at_frames(orig_bvh, frame_splits):
     prev_frame = 0
     for i in range(0, len(frame_splits)+1):
         if i == len(frame_splits):
-            fn = f'{orig_bvh}_split_{i}_frame_{prev_frame}_+.bvh'
+            fn = f'{bvh_name}_split_{i}_frame_{prev_frame}_+.bvh'
             splits.append(open(fn, 'wt'))
         else:
-            fn = f'{orig_bvh}_split_{i}_frame_{prev_frame}_{frame_splits[i]}.bvh'
+            fn = f'{bvh_name}_split_{i}_frame_{prev_frame}_{frame_splits[i]}.bvh'
             splits.append(open(fn, 'wt'))
             prev_frame = frame_splits[i]
         print(fn)
@@ -211,7 +211,6 @@ def collapse_low_velocity_points(low_vels):
         while low_vels[i] - low_vels[(i-1)] < FRAME_LIMIT:
             i += 1
         # once we're at a point beyond the low velocities
-        print('broke out at ', low_vels[i])
         velocity_frames.append(low_vels[i])
         i += 1
     return velocity_frames
@@ -234,11 +233,11 @@ def split_audio_at_times(wav_f, fn, times):
     orig_audio = AudioSegment.from_wav(wav_f)
     for i in range(0, len(times)):
         if i == 0:
-            wav_name = f'{fn}_split_{i}_frame_{0}_{times[i]}.wav'
+            wav_name = f'{fn}_split_{i}_time_{0}_{times[i]}.wav'
             newAudio = orig_audio[0:(times[i] * 1000)]      # works in ms
             newAudio.export(wav_name, format="wav")  # Exports to a wav file in the current path
         else:
-            wav_name = f'{fn}_split_{i}_frame_{times[i-1]}_{times[i]}.wav'
+            wav_name = f'{fn}_split_{i}_time_{times[i-1]}_{times[i]}.wav'
             newAudio = orig_audio[(1000* times[i-1]):(1000* times[i])]
             newAudio.export(wav_name, format="wav")  # Exports to a wav file in the current path
 
@@ -260,13 +259,13 @@ def split_transcript_at_times(transcript_f, fn, times):
             if timestr_to_float(all_words[i]['start_time']) < times[j]:   # keep going on this transcript
                 curr_words.append(all_words[i])
             elif j == 0:       # time to print a new transcript
-                t_name = f'{fn}_split_{j}_frame_{0}_{times[j]}.json'
+                t_name = f'{fn}_split_{j}_time_{0}_{times[j]}.json'
                 with open(t_name, 'w') as out:
                     json.dump(curr_words, out)
                 j += 1
                 curr_words = [all_words[i]]
             else:
-                t_name = f'{fn}_split_{j}_frame_{times[j-1]}_{times[j]}.json'
+                t_name = f'{fn}_split_{j}_time_{times[j-1]}_{times[j]}.json'
                 with open(t_name, 'w') as out:
                     json.dump(curr_words, out)
                 j += 1
@@ -294,17 +293,23 @@ if __name__ == "__main__":
 
 
     params = parser.parse_args()
-    bvh_name = os.path.join('Motion', params.file_name + '.bvh')
-    wav_name = os.path.join('Audio', params.file_name + '.wav')
-    txt_name = os.path.join('Transcripts', params.file_name + '.json')
+    bvh_name = os.path.join(params.raw_dir, 'Motion', params.file_name + '.bvh')
+    wav_name = os.path.join(params.raw_dir, 'Audio', params.file_name + '.wav')
+    txt_name = os.path.join(params.raw_dir, 'Transcripts', params.file_name + '.json')
 
-    modat = get_positions(params.bvh_name)
+    if not os.path.exists(params.dest_dir):
+        os.mkdir(params.dest_dir)
+
+    modat = get_positions(bvh_name)[0]      ## the 0 here is because we only operate on 1 file at a time
 
     lv = get_low_velocity_hand_points(modat)
+
+    dest_file = os.path.join(params.dest_dir, params.file_name)
+
     # create the bvh file splits at the points of low velocity
-    split_bvh_at_frames(params.bvh_file, lv)
+    split_bvh_at_frames(bvh_name, dest_file, lv)
 
     # now split audio and text
     times = get_times_of_splits(lv)
-    split_audio_at_times(wav_name, params.file_name, times)
-    # split_text_at_times(txt_name, params.file_name, times)
+    split_audio_at_times(wav_name, dest_file, times)
+    split_transcript_at_times(txt_name, dest_file, times)
