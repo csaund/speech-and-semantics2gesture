@@ -7,6 +7,7 @@ from local_modules.pymo.preprocessing import *
 from local_modules.pymo.viz_tools import *
 from sklearn.pipeline import Pipeline
 
+
 RIGHT_HAND_X = 'RightHand_Xposition'
 LEFT_HAND_X = 'LeftHand_Xposition'
 RIGHT_HAND_Y = 'RightHand_Yposition'
@@ -136,3 +137,10 @@ def get_times_of_splits(split_frames):
 
 def timestr_to_float(s):
     return float(s.split('s')[0])
+
+
+# TODO take this out -- for testing ONLY
+bvh_file = os.path.join('Splits', 'NaturalTalking_005', 'NaturalTalking_005_split_11_frame_1612_2115.bvh')
+wav_file = os.path.join('Splits', 'NaturalTalking_005', 'NaturalTalking_005_split_11_time_26.8667204_35.2500705.wav')
+txt_file = os.path.join('Splits', 'NaturalTalking_005', 'NaturalTalking_005_split_11_time_26.8667204_35.2500705.json')
+modat = get_positions(bvh_file)[0]

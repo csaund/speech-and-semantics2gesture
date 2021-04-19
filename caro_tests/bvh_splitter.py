@@ -10,7 +10,7 @@ module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from caro_tests.bvh_helpers import *
+from caro_tests.bvh_helpers import get_positions, get_low_velocity_hand_points, timestr_to_float, get_times_of_splits
 from pydub import AudioSegment
 import json
 
@@ -20,6 +20,9 @@ import joblib as jl
 ## the criteria for that include:
 ## when both hands have a velocity below a certain threshold
 ## when both hands are in the rest position?
+
+# usage
+# python bvh_splitter.py --raw_dir <path/to/raw> --file_name <i.e. NaturalTalking_001> --dest_dir <Splits>
 
 
 # takes list of frames to split bvh file at
@@ -38,8 +41,8 @@ def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
             fn = f'{bvh_name}_split_{i}_frame_{prev_frame}_{frame_splits[i]}.bvh'
             splits.append(open(fn, 'wt'))
             prev_frame = frame_splits[i]
-        print(fn)
-    # 15
+        # print(fn)
+
     # copy hierarchy
     line = ""
     while 'MOTION' not in str(line):
@@ -60,12 +63,12 @@ def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
             framecounts.append(orig_framecount - frame_splits[-1])
     for i in range(len(splits)):
         splits[i].write(str('Frames: %s\n' % framecounts[i]))
-    # 36
+
     # add the frame time
     line = f.readline()
     for s in splits:
         s.write(str(line))
-    # 41
+
     # add frames as we go
     cur_framecount = 0
     i = 0
@@ -81,18 +84,11 @@ def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
                 line = f.readline()
                 splits[i].write(str(line))
                 cur_framecount += 1
-        # print(str(line))
         i += 1
 
     f.close()
     for s in splits:
         s.close()
-
-
-def play_motion_data(modat):
-    disp = nb_play_mocap(modat, 'pos',
-        scale = 2, camera_z = 800, frame_time = 1 / 120,
-        base_url = 'pymo/mocapplayer/playBuffer.html')
 
 
 # times is in seconds
@@ -118,21 +114,33 @@ def split_transcript_at_times(transcript_f, fn, times):
         i = 0
         j = 0
         curr_words = []
+        transcript = []
         while i < len(all_words):
             if timestr_to_float(all_words[i]['start_time']) < times[j]:   # keep going on this transcript
                 curr_words.append(all_words[i])
+                transcript.append(all_words[i]['word'])
             elif j == 0:       # time to print a new transcript
+                trans = {
+                    'transcript': transcript,
+                    'words': curr_words
+                }
                 t_name = f'{fn}_split_{j}_time_{0}_{times[j]}.json'
                 with open(t_name, 'w') as out:
-                    json.dump(curr_words, out)
+                    json.dump(trans, out)
                 j += 1
                 curr_words = [all_words[i]]
+                transcript = [all_words[i]['word']]
             else:
+                trans = {
+                    'transcript': transcript,
+                    'words': curr_words
+                }
                 t_name = f'{fn}_split_{j}_time_{times[j-1]}_{times[j]}.json'
                 with open(t_name, 'w') as out:
-                    json.dump(curr_words, out)
+                    json.dump(trans, out)
                 j += 1
                 curr_words = [all_words[i]]
+                transcript = [all_words[i]['word']]
             i += 1
 
         # get the last one
@@ -163,6 +171,7 @@ if __name__ == "__main__":
     if not os.path.exists(params.dest_dir):
         os.mkdir(params.dest_dir)
 
+    print('getting motion data')
     modat = get_positions(bvh_name)[0]      ## the 0 here is because we only operate on 1 file at a time
 
     lv = get_low_velocity_hand_points(modat)

@@ -3,6 +3,82 @@ import numpy as np
 import matplotlib.pyplot as plt
 import IPython
 import os
+import matplotlib
+from matplotlib.animation import Animation
+matplotlib.use('TkAgg')
+from matplotlib.animation import FuncAnimation
+from itertools import count
+
+
+def make_anim(modat):
+    figgo = plt.figure(figsize=(8, 8))
+    ax = figgo.add_subplot(111, projection='3d')
+    index = count()
+
+    def run_it(data):
+        next(index)
+        print(index)
+        joints_to_draw = modat.skeleton.keys()
+        df = data
+        for joint in joints_to_draw:
+            parent_x = df['%s_Xposition' % joint][index]
+            parent_y = df['%s_Zposition' % joint][index]
+            parent_z = df['%s_Yposition' % joint][index]
+            # ^ In mocaps, Y is the up-right axis
+            ax.scatter(xs=parent_x,
+                       ys=parent_y,
+                       zs=parent_z,
+                       alpha=0.6, c='b', marker='o')
+
+            children_to_draw = [c for c in modat.skeleton[joint]['children'] if c in joints_to_draw]
+
+            for c in children_to_draw:
+                child_x = df['%s_Xposition' % c][index]
+                child_y = df['%s_Zposition' % c][index]
+                child_z = df['%s_Yposition' % c][index]
+                # ^ In mocaps, Y is the up-right axis
+
+                ax.plot([parent_x, child_x], [parent_y, child_y], [parent_z, child_z], 'k-', lw=2, c='black')
+            return ax
+
+    def data_gen():
+        while True: yield modat.values
+
+    ani = FuncAnimation(figgo, run_it, data_gen, frames=500)
+    plt.show(block=False)
+
+
+def animate(modat, frame):
+    i = frame
+    fig = plt.figure(figsize=(15, 15))
+    ax = fig.add_subplot(111, projection='3d')
+
+    joints_to_draw = modat.skeleton.keys()
+    df = modat.values
+
+    for joint in joints_to_draw:
+        parent_x = df['%s_Xposition' % joint][i]
+        parent_y = df['%s_Zposition' % joint][i]
+        parent_z = df['%s_Yposition' % joint][i]
+        # ^ In mocaps, Y is the up-right axis
+
+        ax.scatter(xs=parent_x,
+                   ys=parent_y,
+                   zs=parent_z,
+                   alpha=0.6, c='b', marker='o')
+
+        children_to_draw = [c for c in modat.skeleton[joint]['children'] if c in joints_to_draw]
+
+        for c in children_to_draw:
+            child_x = df['%s_Xposition' % c][i]
+            child_y = df['%s_Zposition' % c][i]
+            child_z = df['%s_Yposition' % c][i]
+            # ^ In mocaps, Y is the up-right axis
+
+            ax.plot([parent_x, child_x], [parent_y, child_y], [parent_z, child_z], 'k-', lw=2, c='black')
+
+    plt.plot(ax)
+
 
 def save_fig(fig_id, tight_layout=True):
     if tight_layout:
