@@ -1,9 +1,6 @@
 from argparse import ArgumentParser
 import moviepy.editor as mpe
 
-from caro_tests.bvh_helpers import get_positions, get_low_velocity_hand_points, timestr_to_float, get_times_of_splits
-from pydub import AudioSegment
-import json
 
 def combine_audio(vidname, audname, outname, fps=25):
     my_clip = mpe.VideoFileClip(vidname)

@@ -3,7 +3,7 @@ import pandas as pd
 
 from argparse import ArgumentParser
 
-import glob
+import math
 import os
 import sys
 module_path = os.path.abspath(os.path.join('..'))
@@ -29,7 +29,7 @@ import joblib as jl
 # saves as many files as splits+1
 # if downsampling as well, samples from 0.0166 fps to 0.05 fps
 # so only take every 3 frames...?
-def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits, downsample=True):
+def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
     f = open(orig_bvh, "r")
 
     # create files for split
@@ -64,7 +64,8 @@ def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits, downsample=True):
         else:
             framecounts.append(orig_framecount - frame_splits[-1])
     for i in range(len(splits)):
-        splits[i].write(str('Frames: %s\n' % framecounts[i]))
+        fc = framecounts[i]
+        splits[i].write(str('Frames: %s\n' % fc))
 
     # add the frame time
     line = f.readline()
@@ -106,49 +107,58 @@ def split_audio_at_times(wav_f, fn, times):
             newAudio = orig_audio[(1000* times[i-1]):(1000* times[i])]
             newAudio.export(wav_name, format="wav")  # Exports to a wav file in the current path
 
+    wav_name = f'{fn}_split_{i+1}_time_{times[-1]}_+.wav'
+    newAudio = orig_audio[(1000 * times[i]):]
+    newAudio.export(wav_name, format="wav")  # Exports to a wav file in the current path
 
+
+## TODO: MAJORLY!!!! DOESN'T CURRENTLY GET TRANSCRIPT FOR LAST FILE!!!!
 def split_transcript_at_times(transcript_f, fn, times):
     with open(transcript_f) as f:
         data = json.load(f)
         all_words = []
         for a in data:
             all_words += a['alternatives'][0]['words']
-        i = 0
-        j = 0
+        words_iter = 0
+        times_iter = 0
         curr_words = []
         transcript = []
-        while i < len(all_words):
-            if timestr_to_float(all_words[i]['start_time']) < times[j]:   # keep going on this transcript
-                curr_words.append(all_words[i])
-                transcript.append(all_words[i]['word'])
-            elif j == 0:       # time to print a new transcript
+        while words_iter < len(all_words):
+            if timestr_to_float(all_words[words_iter]['start_time']) < times[times_iter]:   # keep going on this transcript
+                curr_words.append(all_words[words_iter])
+                transcript.append(all_words[words_iter]['word'])
+            elif times_iter == 0:       # time to print a new transcript
                 trans = {
                     'transcript': transcript,
                     'words': curr_words
                 }
-                t_name = f'{fn}_split_{j}_time_{0}_{times[j]}.json'
+                t_name = f'{fn}_split_{times_iter}_time_{0}_{times[times_iter]}.json'
                 with open(t_name, 'w') as out:
                     json.dump(trans, out)
-                j += 1
-                curr_words = [all_words[i]]
-                transcript = [all_words[i]['word']]
+                times_iter += 1
+                curr_words = [all_words[words_iter]]
+                transcript = [all_words[words_iter]['word']]
             else:
                 trans = {
                     'transcript': transcript,
                     'words': curr_words
                 }
-                t_name = f'{fn}_split_{j}_time_{times[j-1]}_{times[j]}.json'
+                t_name = f'{fn}_split_{times_iter}_time_{times[times_iter-1]}_{times[times_iter]}.json'
                 with open(t_name, 'w') as out:
                     json.dump(trans, out)
-                j += 1
-                curr_words = [all_words[i]]
-                transcript = [all_words[i]['word']]
-            i += 1
+                times_iter += 1
+                curr_words = [all_words[words_iter]]
+                transcript = [all_words[words_iter]['word']]
+            words_iter += 1
 
         # get the last one
-        t_name = f'{fn}_split_{j}_frame_{times[j]}_+.json'
+        t_name = f'{fn}_split_{times_iter+1}_frame_{times[-1]}_+.json'
         with open(t_name, 'w') as out:
-            json.dump(curr_words, out)
+            trans = {
+                'transcript': transcript,
+                'words': curr_words
+            }
+            json.dump(trans, out)
 
 
 if __name__ == "__main__":
