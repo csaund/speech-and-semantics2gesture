@@ -34,7 +34,7 @@ if __name__ == "__main__":
         if f.endswith('.json'):
             with open(os.path.join(os.getcwd(), params.data_dir, f)) as j_f:
                 data = json.load(j_f)
-                t = str(i) + " "
+                t = ""
                 try:
                     for el in data['transcript']:
                         t += el + " "

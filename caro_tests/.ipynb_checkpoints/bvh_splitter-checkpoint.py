@@ -208,7 +208,7 @@ if __name__ == "__main__":
                                    help="Path where extracted motion features will be stored")
     parser.add_argument('--pipeline_dir', '-pipe', default="../utils/",
                         help="Path where the motion data processing pipeline will be stored")
-    parser.add_argument('--bvh_file', '-bvh', default="NaturalTalking_010.bvh",
+    parser.add_argument('--bvh_file', '-bvh', default="",
                         help="bvh file to extract")
 
     params = parser.parse_args()

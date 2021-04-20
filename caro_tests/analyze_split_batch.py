@@ -11,6 +11,9 @@
 # these useful stats include:
 # number of words per split
 # time/split
+
+## example usage
+# python -m caro_tests.analyze_split_batch --analyze_dir Splits/NaturalTalking_008-wc10/ --output_dir Splits/NaturalTalking_008-wc10
 import numpy as np
 from matplotlib import pyplot as plt
 from argparse import ArgumentParser
