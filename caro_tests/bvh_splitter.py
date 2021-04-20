@@ -15,7 +15,9 @@ from caro_tests.bvh_helpers import get_positions, get_low_velocity_hand_points, 
 from pydub import AudioSegment
 import json
 
-import joblib as jl
+## example usage
+# python -m caro_tests.bvh_splitter --raw_dir ../raw_data --dest_dir Splits/NaturalTalking_008-tconst10 --file_name NaturalTalking_008 --split_by timeconst -tc 10
+
 
 ## the goal of this file is to identify where to cut the gestures
 ## the criteria for that include:
@@ -128,7 +130,7 @@ def split_transcript_at_times(transcript_f, fn, times):
         times_iter = 0
         curr_words = []
         transcript = []
-        while words_iter < len(all_words):
+        while words_iter < len(all_words) and times_iter < len(times):
             if timestr_to_float(all_words[words_iter]['start_time']) < times[times_iter]:   # keep going on this transcript
                 curr_words.append(all_words[words_iter])
                 transcript.append(all_words[words_iter]['word'])
@@ -203,7 +205,7 @@ def get_timeconst_ending_times(transcript, time_interval):
     times = []
     with open(transcript) as t:
         data = json.load(t)
-        last_time = int(data[-1]['alternatives'][0]['words'][-1]['end_time'].split('s')[0])
+        last_time = int(float(data[-1]['alternatives'][0]['words'][-1]['end_time'].split('s')[0]))
 
         for i in range(0, last_time, time_interval):
             times.append(i)
@@ -236,22 +238,21 @@ if __name__ == "__main__":
     if not os.path.exists(params.dest_dir):
         os.mkdir(params.dest_dir)
 
-    print('getting motion data')
-    modat = get_positions(bvh_name)[0]      ## the 0 here is because we only operate on 1 file at a time
-
     split_frames = []
     split_times = []
     if params.split_by == 'low_velocity':
+        print('getting motion data')
+        modat = get_positions(bvh_name)[0]  ## the 0 here is because we only operate on 1 file at a time
         split_frames = get_low_velocity_hand_points(modat)
         split_times = get_times_of_splits(split_frames)
     elif params.split_by == 'sentence':
         split_times = get_sentence_ending_times(txt_name)
         split_frames = get_frames_of_splits(split_times)
     elif params.split_by == 'wordcount':
-        split_times = get_wordcount_ending_times(txt_name, params.wordcount)
+        split_times = get_wordcount_ending_times(txt_name, int(params.wordcount))
         split_frames = get_frames_of_splits(split_times)
     elif params.split_by == 'timeconst':
-        split_times = get_timeconst_ending_times(txt_name, params.timeconst)
+        split_times = get_timeconst_ending_times(txt_name, int(params.timeconst))
         split_frames = get_frames_of_splits(split_times)
 
     print('SPLIT TIMES:', split_times)
