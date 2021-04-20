@@ -3,6 +3,7 @@
 *.wav
 *.json
 *.bvh
+Splits/
 *.xml
 *.iml
 *.pyc

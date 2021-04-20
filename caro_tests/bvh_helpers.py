@@ -139,6 +139,38 @@ def timestr_to_float(s):
     return float(s.split('s')[0])
 
 
+import cv2
+import os
+import numpy as np
+
+image_folder = 'images'
+video_name = 'video.avi'
+
+
+def save_images(bvh_file, dir='tmp'):
+    if not os.path.exists(dir):
+        os.mkdir(os.path.join(os.getcwd(), dir))
+
+
+def mirror_sequence(sequence):
+    mirrored_rotations = sequence[:, 1:, :]
+    mirrored_trajectory = np.expand_dims(sequence[:, 0, :], axis=1)
+
+    temp = mirrored_rotations.copy()
+
+    # Flip left/right joints
+    mirrored_rotations[:, joints_left] = temp[:, joints_right]
+    mirrored_rotations[:, joints_right] = temp[:, joints_left]
+
+    mirrored_rotations[:, :, [1, 2]] *= -1
+    mirrored_trajectory[:, :, 0] *= -1
+
+    mirrored_sequence = np.concatenate((mirrored_trajectory, mirrored_rotations), axis=1)
+
+    return mirrored_sequence
+
+
+
 # TODO take this out -- for testing ONLY
 bvh_file = os.path.join('Splits', 'NaturalTalking_005', 'NaturalTalking_005_split_11_frame_1612_2115.bvh')
 wav_file = os.path.join('Splits', 'NaturalTalking_005', 'NaturalTalking_005_split_11_time_26.8667204_35.2500705.wav')

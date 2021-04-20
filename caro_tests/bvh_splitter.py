@@ -27,7 +27,9 @@ import joblib as jl
 
 # takes list of frames to split bvh file at
 # saves as many files as splits+1
-def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
+# if downsampling as well, samples from 0.0166 fps to 0.05 fps
+# so only take every 3 frames...?
+def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits, downsample=True):
     f = open(orig_bvh, "r")
 
     # create files for split
