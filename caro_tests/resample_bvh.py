@@ -26,7 +26,7 @@ import joblib as jl
 
 
 def resample_bvh(bvh_file):
-
+    return
 
 
 if __name__ == "__main__":

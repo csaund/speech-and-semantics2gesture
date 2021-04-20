@@ -6,7 +6,7 @@ from local_modules.pymo.features import *
 from local_modules.pymo.preprocessing import *
 from local_modules.pymo.viz_tools import *
 from sklearn.pipeline import Pipeline
-
+import math
 
 RIGHT_HAND_X = 'RightHand_Xposition'
 LEFT_HAND_X = 'LeftHand_Xposition'
@@ -132,7 +132,12 @@ def collapse_low_velocity_points(low_vels):
 # takes frames at which we split bvh and
 # converts to times.
 def get_times_of_splits(split_frames):
-    return [(v * BVH_FPS) for v in split_frames]
+    return [(f * BVH_FPS) for f in split_frames]
+
+
+# times comes in s
+def get_frames_of_splits(split_times):
+    return [math.floor(t / BVH_FPS) for t in split_times]
 
 
 def timestr_to_float(s):
@@ -169,6 +174,17 @@ def mirror_sequence(sequence):
 
     return mirrored_sequence
 
+
+def sorter(w):
+    try:
+        n = w.split('_')
+        for i in range(len(n)):
+            if n[i] == 'split':
+                return int(n[i+1])
+    except Exception as e:
+        print('Non-matching file found in data file: ', w)
+        print(e)
+        return 0
 
 
 # TODO take this out -- for testing ONLY

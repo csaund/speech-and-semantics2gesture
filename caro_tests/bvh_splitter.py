@@ -10,7 +10,8 @@ module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from caro_tests.bvh_helpers import get_positions, get_low_velocity_hand_points, timestr_to_float, get_times_of_splits
+from caro_tests.bvh_helpers import get_positions, get_low_velocity_hand_points, timestr_to_float, \
+                                   get_times_of_splits, get_frames_of_splits
 from pydub import AudioSegment
 import json
 
@@ -152,7 +153,7 @@ def split_transcript_at_times(transcript_f, fn, times):
             words_iter += 1
 
         # get the last one
-        t_name = f'{fn}_split_{times_iter+1}_frame_{times[-1]}_+.json'
+        t_name = f'{fn}_split_{times_iter+1}_time_{times[-1]}_+.json'
         with open(t_name, 'w') as out:
             trans = {
                 'transcript': transcript,
@@ -161,17 +162,33 @@ def split_transcript_at_times(transcript_f, fn, times):
             json.dump(trans, out)
 
 
+def get_sentence_ending_times(transcript):
+    sentence_end_times = []
+    with open(transcript) as t:
+        data = json.load(t)
+        all_words = []
+        for a in data:
+            all_words += a['alternatives'][0]['words']
+        for w in all_words:
+            if '.' in w['word']:
+                t = float(w['end_time'].split('s')[0])  # annoying formatting
+                sentence_end_times.append(t + 1)  # just add a buffer second.
+    return sentence_end_times
+
+
+
+
 if __name__ == "__main__":
     # Setup parameter parser
     parser = ArgumentParser()
     parser.add_argument('--raw_dir', '-orig', default="../dataset/raw_data/",
                                    help="Path where original motion files (in BVH format) are stored")
-    parser.add_argument('--dest_dir', '-dest', default="../../dataset/raw_data/Motion",
+    parser.add_argument('--dest_dir', '-dest', default="../../dataset/raw_data/tmp",
                                    help="Path where extracted motion features will be stored")
-    parser.add_argument('--pipeline_dir', '-pipe', default="../utils/",
-                        help="Path where the motion data processing pipeline will be stored")
     parser.add_argument('--file_name', '-bvh', default="NaturalTalking_010",
-                        help="bvh file to extract")
+                                   help="bvh file to extract")
+    parser.add_argument('--split_by', '-sp', default="low_velocity",
+                                   help="how to split up gestures <low_velocity, sentence, wordcount>")
 
 
 
@@ -186,14 +203,20 @@ if __name__ == "__main__":
     print('getting motion data')
     modat = get_positions(bvh_name)[0]      ## the 0 here is because we only operate on 1 file at a time
 
-    lv = get_low_velocity_hand_points(modat)
+    split_frames = []
+    split_times = []
+    if params.split_by == 'low_velocity':
+        split_frames = get_low_velocity_hand_points(modat)
+        split_times = get_times_of_splits(split_frames)
+    elif params.split_by == 'sentence':
+        split_times = get_sentence_ending_times(txt_name)
+        split_frames = get_frames_of_splits(split_times)
 
     dest_file = os.path.join(params.dest_dir, params.file_name)
 
     # create the bvh file splits at the points of low velocity
-    split_bvh_at_frames(bvh_name, dest_file, lv)
+    split_bvh_at_frames(bvh_name, dest_file, split_frames)
 
     # now split audio and text
-    times = get_times_of_splits(lv)
-    split_audio_at_times(wav_name, dest_file, times)
-    split_transcript_at_times(txt_name, dest_file, times)
+    split_audio_at_times(wav_name, dest_file, split_times)
+    split_transcript_at_times(txt_name, dest_file, split_times)
