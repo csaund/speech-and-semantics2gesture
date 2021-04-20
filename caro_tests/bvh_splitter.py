@@ -30,6 +30,10 @@ import joblib as jl
 # saves as many files as splits+1
 # if downsampling as well, samples from 0.0166 fps to 0.05 fps
 # so only take every 3 frames...?
+TIME_CONST = 10      # number of seconds to make gesture splits doing a timeconst
+WORD_CONST = 10      # number of words to make gesture splits doing a wordconst
+
+
 def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
     f = open(orig_bvh, "r")
 
@@ -176,6 +180,35 @@ def get_sentence_ending_times(transcript):
     return sentence_end_times
 
 
+# split gestures into chunks containing wc number of words
+def get_wordcount_ending_times(transcript, wc):
+    end_times = []
+    with open(transcript) as t:
+        data = json.load(t)
+        all_words = []
+        for a in data:
+            all_words += a['alternatives'][0]['words']
+
+        i = wc
+        while i < len(all_words):
+            t = float(all_words[i]['end_time'].split('s')[0])  # annoying formatting
+            end_times.append(t + 1)     # 1 second buffer why  not
+            i += wc
+
+    return end_times
+
+
+# split gestures into chunks of length time_interval
+def get_timeconst_ending_times(transcript, time_interval):
+    times = []
+    with open(transcript) as t:
+        data = json.load(t)
+        last_time = int(data[-1]['alternatives'][0]['words'][-1]['end_time'].split('s')[0])
+
+        for i in range(0, last_time, time_interval):
+            times.append(i)
+
+    return times
 
 
 if __name__ == "__main__":
@@ -188,8 +221,11 @@ if __name__ == "__main__":
     parser.add_argument('--file_name', '-bvh', default="NaturalTalking_010",
                                    help="bvh file to extract")
     parser.add_argument('--split_by', '-sp', default="low_velocity",
-                                   help="how to split up gestures <low_velocity, sentence, wordcount>")
-
+                                   help="how to split up gestures <low_velocity, sentence, wordcount, timeconst>")
+    parser.add_argument('--wordcount', '-wc', default=10,
+                                   help="if split gestures by wordcount, how many words")
+    parser.add_argument('--timeconst', '-tc', default=10,
+                                   help="if split gestures by time, how many seconds")
 
 
     params = parser.parse_args()
@@ -211,6 +247,14 @@ if __name__ == "__main__":
     elif params.split_by == 'sentence':
         split_times = get_sentence_ending_times(txt_name)
         split_frames = get_frames_of_splits(split_times)
+    elif params.split_by == 'wordcount':
+        split_times = get_wordcount_ending_times(txt_name, params.wordcount)
+        split_frames = get_frames_of_splits(split_times)
+    elif params.split_by == 'timeconst':
+        split_times = get_timeconst_ending_times(txt_name, params.timeconst)
+        split_frames = get_frames_of_splits(split_times)
+
+    print('SPLIT TIMES:', split_times)
 
     dest_file = os.path.join(params.dest_dir, params.file_name)
 
