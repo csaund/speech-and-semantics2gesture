@@ -53,13 +53,13 @@ class BVHScanner():
 class BVHParser():
     '''
     A class to parse a BVH file.
-    
+
     Extracts the skeleton and channel values
     '''
     def __init__(self, filename=None):
         self.reset()
 
-    def reset(self): 
+    def reset(self):
         self._skeleton = {}
         self.bone_context = []
         self._motion_channels = []
@@ -69,11 +69,11 @@ class BVHParser():
         self.root_name = ''
 
         self.scanner = BVHScanner()
-        
+
         self.data = MocapData()
 
 
-    def parse(self, filename):
+    def parse(self, filename, start=0, stop=-1):
         self.reset()
 
         with open(filename, 'r') as bvh_file:
@@ -81,8 +81,8 @@ class BVHParser():
         tokens, remainder = self.scanner.scan(raw_contents)
         self._parse_hierarchy(tokens)
         self.current_token = self.current_token + 1
-        self._parse_motion(tokens)
-        
+        self._parse_motion(tokens, start, stop)
+
         self.data.skeleton = self._skeleton
         self.data.channel_names = self._motion_channels
         self.data.values = self._to_DataFrame()
@@ -90,7 +90,7 @@ class BVHParser():
         self.data.framerate = self.framerate
 
         return self.data
-    
+
     def _to_DataFrame(self):
         '''Returns all of the channels parsed from the file as a pandas DataFrame'''
 
@@ -104,7 +104,7 @@ class BVHParser():
 
 
     def _new_bone(self, parent, name):
-        bone = {'parent': parent, 'channels': [], 'offsets': [],'children': []}
+        bone = {'parent': parent, 'channels': [], 'offsets': [], 'order': '','children': []}
         return bone
 
     def _push_bone_context(self,name):
@@ -126,7 +126,7 @@ class BVHParser():
             offsets[i] = float(bvh[token_index][1])
             token_index = token_index + 1
         return offsets, token_index
-    
+
     def _read_channels(self, bvh, token_index):
         if bvh[token_index] != ('IDENT', 'CHANNELS'):
             return None, None
@@ -134,10 +134,15 @@ class BVHParser():
         channel_count = int(bvh[token_index][1])
         token_index = token_index + 1
         channels = [""] * channel_count
+        order = ""
         for i in range(channel_count):
             channels[i] = bvh[token_index][1]
             token_index = token_index + 1
-        return channels, token_index
+            if(channels[i] == "Xrotation" or channels[i]== "Yrotation" or channels[i]== "Zrotation"):
+                order += channels[i][0]
+            else :
+                order = ""
+        return channels, token_index, order
 
     def _parse_joint(self, bvh, token_index):
         end_site = False
@@ -145,7 +150,7 @@ class BVHParser():
         token_index = token_index + 1
         joint_name = bvh[token_index][1]
         token_index = token_index + 1
-        
+
         parent_name = self._get_bone_context()
 
         if (joint_id == "End"):
@@ -159,8 +164,9 @@ class BVHParser():
         offsets, token_index = self._read_offset(bvh, token_index)
         joint['offsets'] = offsets
         if not end_site:
-            channels, token_index = self._read_channels(bvh, token_index)
+            channels, token_index, order = self._read_channels(bvh, token_index)
             joint['channels'] = channels
+            joint['order'] = order
             for channel in channels:
                 self._motion_channels.append((joint_name, channel))
 
@@ -192,21 +198,22 @@ class BVHParser():
         root_bone = self._new_bone(None, root_name)
         self.current_token = self.current_token + 2 #skipping open brace
         offsets, self.current_token = self._read_offset(bvh, self.current_token)
-        channels, self.current_token = self._read_channels(bvh, self.current_token)
+        channels, self.current_token, order = self._read_channels(bvh, self.current_token)
         root_bone['offsets'] = offsets
         root_bone['channels'] = channels
+        root_bone['order'] = order
         self._skeleton[root_name] = root_bone
         self._push_bone_context(root_name)
-        
+
         for channel in channels:
             self._motion_channels.append((root_name, channel))
 
         while bvh[self.current_token][1] == 'JOINT':
             self.current_token = self._parse_joint(bvh, self.current_token)
-        
+
         self.root_name = root_name
 
-    def _parse_motion(self, bvh):
+    def _parse_motion(self, bvh, start, stop):
         if bvh[self.current_token][0] != 'IDENT':
             print('Unexpected text')
             return None
@@ -218,6 +225,13 @@ class BVHParser():
             return None
         self.current_token = self.current_token + 1
         frame_count = int(bvh[self.current_token][1])
+
+        if stop<0 or stop>frame_count:
+            stop = frame_count
+
+        assert(start>=0)
+        assert(start<stop)
+
         self.current_token = self.current_token + 1
         if bvh[self.current_token][1] != 'Frame':
             return None
@@ -228,15 +242,19 @@ class BVHParser():
         frame_rate = float(bvh[self.current_token][1])
 
         self.framerate = frame_rate
-       
+
         self.current_token = self.current_token + 1
-       
+
         frame_time = 0.0
-        self._motions = [()] * frame_count
-        for i in range(frame_count):
+        self._motions = [()] * (stop-start)
+        idx=0
+        for i in range(stop):
             channel_values = []
             for channel in self._motion_channels:
                 channel_values.append((channel[0], channel[1], float(bvh[self.current_token][1])))
                 self.current_token = self.current_token + 1
-            self._motions[i] = (frame_time, channel_values)
-            frame_time = frame_time + frame_rate
+
+            if i>=start:
+                self._motions[idx] = (frame_time, channel_values)
+                frame_time = frame_time + frame_rate
+                idx+=1
