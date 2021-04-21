@@ -4,11 +4,42 @@ import os
 from pathlib import Path
 
 
+# my god this is hacky
+def get_file_for_split_number(files, split_num, ext):
+    return [f for f in files if 'split_%s' % split_num in f and ext in f][0]
+
+
+# god disgusting
+def get_num_splits(files):
+    splits = []
+    for f in files:
+        try:
+            splits.append(int(f.split('_split')[-1].split('_')[1]))
+        except Exception as e:
+            print('could not get split for file ', f)
+    return max(splits)
+
+
 def get_matching_wav_mp4s(dir):
     files = os.listdir(dir)
+    # need to get names that match up -- need to do this by matching the split number
+    wavs = []
+    mp4s = []
+    num_splits = get_num_splits(files)
+    for split_num in range(num_splits + 1):
+        try:
+            mp4 = [f for f in files if 'split_%s' % split_num in f and '_resampled.mp4' in f][0]
+            wav = [f for f in files if 'split_%s' % split_num in f and '.wav' in f][0]
+            mp4s.append(mp4)
+            wavs.append(wav)
+        except Exception as e:
+            print('could not get mp4 pair: ', e)
+
+    assert(len(wavs) == len(mp4s))
+    return wavs, mp4s
 
 
-def combine_audio(vidname, audname, outname, fps=25):
+def combine_av(vidname, audname, outname, fps=20):
     my_clip = mpe.VideoFileClip(vidname)
     audio_background = mpe.AudioFileClip(audname)
     final_clip = my_clip.set_audio(audio_background)
@@ -32,7 +63,9 @@ if __name__ == "__main__":
     if params.dir:
         # get matching wav/mp4 files
         wavs, mp4s = get_matching_wav_mp4s(params.dir)
-        for i in range(len(wavs)):
-            outname = Path(wavs[i]).with_suffix('_sound.mp4')
-            combine_audio(mp4s[i], wavs[i], outname)
-    combine_audio(params.vid_file, params.wav_file, params.output)
+        for i in range(len(mp4s)):
+            outname = mp4s[i].split('.mp4')[-2] + '_sound.mp4'
+            combine_av(os.path.join(params.dir, mp4s[i]), os.path.join(params.dir, wavs[i]), os.path.join(params.dir, outname))
+
+    else:
+        combine_av(params.vid_file, params.wav_file, params.output)

@@ -213,6 +213,36 @@ def get_timeconst_ending_times(transcript, time_interval):
     return times
 
 
+def split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=None, split_by=None):
+    split_frames = []
+    split_times = []
+    if split_by == 'low_velocity':
+        print('getting motion data')
+        modat = get_positions(bvh_name)[0]  ## the 0 here is because we only operate on 1 file at a time
+        split_frames = get_low_velocity_hand_points(modat)
+        split_times = get_times_of_splits(split_frames)
+    elif split_by == 'sentence':
+        split_times = get_sentence_ending_times(txt_name)
+        split_frames = get_frames_of_splits(split_times)
+    elif split_by == 'wordcount':
+        split_times = get_wordcount_ending_times(txt_name, int(params.wordcount))
+        split_frames = get_frames_of_splits(split_times)
+    elif split_by == 'timeconst':
+        split_times = get_timeconst_ending_times(txt_name, int(params.timeconst))
+        split_frames = get_frames_of_splits(split_times)
+
+    print('SPLIT TIMES:', split_times)
+
+    dest_file = os.path.join(dest_dir, output_name)
+
+    # create the bvh file splits at the points of low velocity
+    split_bvh_at_frames(bvh_name, dest_file, split_frames)
+    # now split audio and text
+    split_audio_at_times(wav_name, dest_file, split_times)
+    split_transcript_at_times(txt_name, dest_file, split_times)
+
+
+
 if __name__ == "__main__":
     # Setup parameter parser
     parser = ArgumentParser()
@@ -235,33 +265,8 @@ if __name__ == "__main__":
     wav_name = os.path.join(params.raw_dir, 'Audio', params.file_name + '.wav')
     txt_name = os.path.join(params.raw_dir, 'Transcripts', params.file_name + '.json')
 
-    if not os.path.exists(params.dest_dir):
-        os.mkdir(params.dest_dir)
+    dest_dir = params.dest_dir
+    if not os.path.exists(dest_dir):
+        os.mkdir(dest_dir)
 
-    split_frames = []
-    split_times = []
-    if params.split_by == 'low_velocity':
-        print('getting motion data')
-        modat = get_positions(bvh_name)[0]  ## the 0 here is because we only operate on 1 file at a time
-        split_frames = get_low_velocity_hand_points(modat)
-        split_times = get_times_of_splits(split_frames)
-    elif params.split_by == 'sentence':
-        split_times = get_sentence_ending_times(txt_name)
-        split_frames = get_frames_of_splits(split_times)
-    elif params.split_by == 'wordcount':
-        split_times = get_wordcount_ending_times(txt_name, int(params.wordcount))
-        split_frames = get_frames_of_splits(split_times)
-    elif params.split_by == 'timeconst':
-        split_times = get_timeconst_ending_times(txt_name, int(params.timeconst))
-        split_frames = get_frames_of_splits(split_times)
-
-    print('SPLIT TIMES:', split_times)
-
-    dest_file = os.path.join(params.dest_dir, params.file_name)
-
-    # create the bvh file splits at the points of low velocity
-    split_bvh_at_frames(bvh_name, dest_file, split_frames)
-
-    # now split audio and text
-    split_audio_at_times(wav_name, dest_file, split_times)
-    split_transcript_at_times(txt_name, dest_file, split_times)
+    split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=params.file_name, split_by=params.split_by)
