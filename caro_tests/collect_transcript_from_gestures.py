@@ -19,7 +19,7 @@ def sorter(w):
 
 def collect_transcript_from_dir(data_dir, output):
     transcripts = os.path.join(os.getcwd(), data_dir, output)
-    fns = os.listdir(params.data_dir)
+    fns = os.listdir(data_dir)
     fns.sort(key=sorter)
     t_file = open(transcripts, 'w')
     i = 0

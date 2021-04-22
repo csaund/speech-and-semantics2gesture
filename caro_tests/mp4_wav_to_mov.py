@@ -20,20 +20,20 @@ def get_num_splits(files):
     return max(splits)
 
 
-def get_matching_wav_mp4s(dir):
-    files = os.listdir(dir)
+def get_matching_wav_mp4s(target_dir):
+    files = os.listdir(target_dir)
     # need to get names that match up -- need to do this by matching the split number
     wavs = []
     mp4s = []
     num_splits = get_num_splits(files)
     for split_num in range(num_splits + 1):
         try:
-            mp4 = [f for f in files if 'split_%s' % split_num in f and '_resampled.mp4' in f][0]
+            mp4 = [f for f in files if 'split_%s' % split_num in f and '.mp4' in f][0]
             wav = [f for f in files if 'split_%s' % split_num in f and '.wav' in f][0]
             mp4s.append(mp4)
             wavs.append(wav)
         except Exception as e:
-            print('could not get mp4 pair: ', e)
+            print('could not get mp4 pair: split %s; %s', (split_num, e))
 
     assert(len(wavs) == len(mp4s))
     return wavs, mp4s
@@ -44,6 +44,15 @@ def combine_av(vidname, audname, outname, fps=20):
     audio_background = mpe.AudioFileClip(audname)
     final_clip = my_clip.set_audio(audio_background)
     final_clip.write_videofile(outname, fps=fps)
+
+
+def combine_av_for_dir(target_dir):
+    # get matching wav/mp4 files
+    wavs, mp4s = get_matching_wav_mp4s(target_dir)
+    for i in range(len(mp4s)):
+        outname = mp4s[i].split('.mp4')[-2] + '_sound.mp4'
+        combine_av(os.path.join(target_dir, mp4s[i]), os.path.join(target_dir, wavs[i]),
+                   os.path.join(target_dir, outname))
 
 
 if __name__ == "__main__":
@@ -61,11 +70,7 @@ if __name__ == "__main__":
     params = parser.parse_args()
 
     if params.dir:
-        # get matching wav/mp4 files
-        wavs, mp4s = get_matching_wav_mp4s(params.dir)
-        for i in range(len(mp4s)):
-            outname = mp4s[i].split('.mp4')[-2] + '_sound.mp4'
-            combine_av(os.path.join(params.dir, mp4s[i]), os.path.join(params.dir, wavs[i]), os.path.join(params.dir, outname))
+        combine_av_for_dir(params.dir)
 
     else:
         combine_av(params.vid_file, params.wav_file, params.output)

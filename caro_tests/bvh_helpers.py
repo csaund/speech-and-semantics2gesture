@@ -7,6 +7,13 @@ from local_modules.pymo.preprocessing import *
 from local_modules.pymo.viz_tools import *
 from sklearn.pipeline import Pipeline
 import math
+import numpy as np
+import subprocess
+import os
+import sys
+
+# from pymo.writers import BVHWriter
+import joblib
 
 RIGHT_HAND_X = 'RightHand_Xposition'
 LEFT_HAND_X = 'LeftHand_Xposition'
@@ -30,30 +37,6 @@ RIGHT_HAND = {
 
 BVH_FPS = 0.0166667
 VELOCITY_THRESHOLD = 0.15
-
-
-def extract_joint_angles(bvh_file, fps):
-    print('extract joint angles')
-    p = BVHParser()
-
-    data_all = []
-    ff = bvh_file
-    print(ff)
-    data_all.append(p.parse(ff))
-    print('got all data')
-
-    data_pipe = Pipeline([
-       ('dwnsampl', DownSampler(tgt_fps=fps,  keep_all=False)),
-       ('root', RootTransformer('hip_centric')),
-       ('mir', Mirror(axis='X', append=True)),
-       ('jtsel', JointSelector(['Spine','Spine1','Spine2','Spine3','Neck','Neck1','Head','RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand'], include_root=True)),
-       ('exp', MocapParameterizer('expmap')),
-       ('cnst', ConstantsRemover()),
-       ('np', Numpyfier())
-    ])
-
-    out_data = data_pipe.fit_transform(data_all)
-    return out_data
 
 
 def get_positions(bvh_file):

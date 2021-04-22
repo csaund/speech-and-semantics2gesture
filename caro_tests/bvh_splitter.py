@@ -57,11 +57,15 @@ def split_bvh_at_frames(orig_bvh, bvh_name, frame_splits):
     while 'MOTION' not in str(line):
         line = f.readline()
         for s in splits:
-            s.write(str(line))
+            if line != chr(10): # skip newlines????
+                l = str(line)
+                s.write(str(line))
 
     # get the frame counts for each split
     framecounts = []
     line = str(f.readline())
+    if line == chr(10):  # skip newlines????
+        line = str(f.readline())
     orig_framecount = int(line.split("\t")[1])
     for i in range(0, len(frame_splits)+1):
         if i == 0:
@@ -213,7 +217,7 @@ def get_timeconst_ending_times(transcript, time_interval):
     return times
 
 
-def split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=None, split_by=None):
+def split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=None, split_by=None, wordcount=10, timeconst=10):
     split_frames = []
     split_times = []
     if split_by == 'low_velocity':
@@ -225,17 +229,19 @@ def split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=None, sp
         split_times = get_sentence_ending_times(txt_name)
         split_frames = get_frames_of_splits(split_times)
     elif split_by == 'wordcount':
-        split_times = get_wordcount_ending_times(txt_name, int(params.wordcount))
+        split_times = get_wordcount_ending_times(txt_name, int(wordcount))
         split_frames = get_frames_of_splits(split_times)
     elif split_by == 'timeconst':
-        split_times = get_timeconst_ending_times(txt_name, int(params.timeconst))
+        split_times = get_timeconst_ending_times(txt_name, int(timeconst))
         split_frames = get_frames_of_splits(split_times)
 
+    print('SPLIT FRAMES: ', split_frames)
     print('SPLIT TIMES:', split_times)
 
     dest_file = os.path.join(dest_dir, output_name)
 
     # create the bvh file splits at the points of low velocity
+    print('splitting: ', bvh_name)
     split_bvh_at_frames(bvh_name, dest_file, split_frames)
     # now split audio and text
     split_audio_at_times(wav_name, dest_file, split_times)
