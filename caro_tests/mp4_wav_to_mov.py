@@ -51,6 +51,9 @@ def combine_av_for_dir(target_dir):
     wavs, mp4s = get_matching_wav_mp4s(target_dir)
     for i in range(len(mp4s)):
         outname = mp4s[i].split('.mp4')[-2] + '_sound.mp4'
+        # create the file?
+        if not os.path.exists(outname):
+            with open(outname, 'w'): pass
         combine_av(os.path.join(target_dir, mp4s[i]), os.path.join(target_dir, wavs[i]),
                    os.path.join(target_dir, outname))
 
