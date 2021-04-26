@@ -1,6 +1,9 @@
 from bert_embedding import BertEmbedding
+import pandas as pd
+import numpy as np
 from transformers import BertTokenizer, BertModel
-import torch
+import os
+import pickle
 
 """
 This file contains the functions that encode the words in the JSON transcriptions using BERT.
@@ -18,7 +21,6 @@ import torch
 import numpy as np
 from caro_tests.syllable_count import count_syllables
 from argparse import ArgumentParser
-
 
 
 def encode_json_transcript_with_bert(json_file, tokenizer, bert_model):
@@ -576,15 +578,46 @@ def encode_json_transcript_with_bert_DEPRECATED(json_file, bert_model):
     return np.array(feature_array)
 
 
+def get_encoding_dist(v1, v2):
+    v1 = np.array(v1)
+    v2 = np.array(v2)
+    dist = np.linalg.norm(v1 - v2)
+    return dist
+
 
 if __name__ == "__main__":
     # Setup parameter parser
     parser = ArgumentParser()
-    parser.add_argument('--json_file', '-orig', default="",
+    parser.add_argument('--dir', '-orig', default="",
                                    help="Path where original motion files (in BVH format) are stored")
 
     tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
     bert_model = BertModel.from_pretrained('bert-base-cased')
 
     params = parser.parse_args()
-    encode_json_transcript_with_bert(params.json_file, tokenizer, bert_model)
+
+    files = os.listdir(params.dir)
+    files = [f for f in files if f.endswith('.json')]
+
+    encodings = []
+    transcripts = []
+    fillers = ["eh", "ah", "like", "kind of"]
+
+    for f in files:
+        fn = os.path.join(params.dir, f)
+        with open(fn, 'r') as file:
+            transcript = json.load(file)
+
+        # The JSON files contain about a minute long segments
+        transcript = transcript['transcript']
+        words = [w for w in transcript if w not in fillers]
+        transcripts.append(words)
+        embedding = get_bert_embedding(sentence_words=words, tokenizer=tokenizer, bert_model=bert_model)
+        encodings.append(embedding)
+
+    df = pd.DataFrame(list(zip(files, encodings, transcripts)), columns=['fn', 'encoding', 'transcript'])
+
+    fn = os.path.join(params.dir + '_transcript_encodings.pkl')
+
+    df.to_pickle(fn)
+
