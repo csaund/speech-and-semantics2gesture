@@ -6,34 +6,35 @@ import os
 import pickle
 from scipy.spatial.distance import squareform, pdist, cdist
 import matplotlib.pyplot as plt
+from argparse import ArgumentParser
+import random
 
 
-def plot_distance_matrix(dif_mat):
-    n = int(np.sqrt(R.size))
-    C = R.reshape((n, n))
-
-    # Plot the matrix
-    plt.matshow(C, cmap="Reds")
-
-    ax = plt.gca()
-
-    # Set the plot labels
-    xlabels = ["B%d" % i for i in xrange(n + 1)]
-    ylabels = ["A%d" % i for i in xrange(n + 1)]
-    ax.set_xticklabels(xlabels)
-    ax.set_yticklabels(ylabels)
-
-    # Add text to the plot showing the values at that point
-    for i in xrange(n):
-        for j in xrange(n):
-            plt.text(j, i, C[i, j], horizontalalignment='center', verticalalignment='center')
-
-    plt.show()
+def get_random_closest_gestures(df):
+    i = random.randint(0, len(df))
+    a = df.iloc[i]
+    b = get_closest_gesture(df, i)
+    print(' '.join(a.transcript))
+    print(' '.join(b.transcript))
+    return a, b
 
 
-def get_distance_matrix(df):
-    dist_mat = (df['encoding'].to_numpy(), df['encoding'].to_numpy())
-    return dist_mat[1]
+def get_nonzero_min_ind(l):
+    m = max(l)
+    ind = 0
+    for i in range(len(l)):
+        if l[i] < m and l[i] != 0:
+            m = l[i]
+            ind = i
+    return m, ind
+
+
+def get_closest_gesture(df, i):
+    df['features'] = df.apply(lambda row: row['encoding'][1], axis=1)
+    interest_vector = df.iloc[i].features
+    distances = df.apply(lambda row: get_encoding_dist(interest_vector, row['features']), axis=1)
+    val, i = get_nonzero_min_ind(distances)
+    return df.iloc[i]
 
 
 def get_encoding_dist(v1, v2):
