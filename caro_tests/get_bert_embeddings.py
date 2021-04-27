@@ -585,18 +585,8 @@ def get_encoding_dist(v1, v2):
     return dist
 
 
-if __name__ == "__main__":
-    # Setup parameter parser
-    parser = ArgumentParser()
-    parser.add_argument('--dir', '-orig', default="",
-                                   help="Path where original motion files (in BVH format) are stored")
-
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-    bert_model = BertModel.from_pretrained('bert-base-cased')
-
-    params = parser.parse_args()
-
-    files = os.listdir(params.dir)
+def get_embeddings_for_dir(dir_path):
+    files = os.listdir(dir_path)
     files = [f for f in files if f.endswith('.json')]
 
     encodings = []
@@ -604,7 +594,7 @@ if __name__ == "__main__":
     fillers = ["eh", "ah", "like", "kind of"]
 
     for f in files:
-        fn = os.path.join(params.dir, f)
+        fn = os.path.join(dir_path, f)
         with open(fn, 'r') as file:
             transcript = json.load(file)
 
@@ -616,8 +606,19 @@ if __name__ == "__main__":
         encodings.append(embedding)
 
     df = pd.DataFrame(list(zip(files, encodings, transcripts)), columns=['fn', 'encoding', 'transcript'])
-
-    fn = os.path.join(params.dir + '_transcript_encodings.pkl')
-
+    fn = os.path.join(dir_path + '_transcript_encodings.pkl')
     df.to_pickle(fn)
+
+
+if __name__ == "__main__":
+    # Setup parameter parser
+    parser = ArgumentParser()
+    parser.add_argument('--dir', '-orig', default="",
+                                   help="Path where original motion files (in BVH format) are stored")
+
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    bert_model = BertModel.from_pretrained('bert-base-cased')
+
+    params = parser.parse_args()
+    get_embeddings_for_dir(params.dir)
 

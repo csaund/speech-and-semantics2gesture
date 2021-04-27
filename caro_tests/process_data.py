@@ -17,6 +17,7 @@ from caro_tests.analyze_split_batch import get_wc_histogram, get_time_histogram
 from caro_tests.mirror_bvh import mirror_downsample_bvh
 from caro_tests.mp4_wav_to_mov import combine_av_for_dir
 from caro_tests.bvh_to_mp4_batch import bvh_to_video
+from caro_tests.get_bert_embeddings import get_embeddings_for_dir
 from tqdm import tqdm
 from pathlib import Path
 
@@ -61,6 +62,9 @@ if __name__ == "__main__":
     # collect the transcripts from those files
     print("collecting transcripts")
     collect_transcript_from_dir(dest_dir, 'transcripts.txt')
+
+    print("getting BERT embeddings")
+    get_embeddings_for_dir(dest_dir)
 
     # get histograms
     # can probably do this a little more cleverly.

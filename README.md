@@ -124,3 +124,12 @@ If you found this code useful, please cite the following paper:
   month=jun
 }
 ```
+
+TODO: 
+* syntacic/rhetorical parse to break up gestures 
+* use phrase structure, motion, AND prosody?
+* do semantic categorizing by hand
+* look at stacy's stuff and see if we can intersect it
+    * can we map caro analysis to subset of stacy analysis
+    
+Gestures as layering approach?????
