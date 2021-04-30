@@ -593,6 +593,9 @@ def get_embeddings_for_dir(dir_path):
     transcripts = []
     fillers = ["eh", "ah", "like", "kind of"]
 
+    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    bert_model = BertModel.from_pretrained('bert-base-cased')
+
     for f in files:
         fn = os.path.join(dir_path, f)
         with open(fn, 'r') as file:
@@ -601,7 +604,14 @@ def get_embeddings_for_dir(dir_path):
         # The JSON files contain about a minute long segments
         transcript = transcript['transcript']
         words = [w for w in transcript if w not in fillers]
+        # todo: get embedding with fillers only if the transcript is ONLY fillers?
+        # todo: maybe make a special embedding for it???
+        # todo CARO currently getting embeddings for FILLERS ONLY. is this what we want??
+        # todo: will that form a cluster??????
+        if not words:
+            words = transcript
         transcripts.append(words)
+        # TODO don't get the embedding if there's nothing here... ?
         embedding = get_bert_embedding(sentence_words=words, tokenizer=tokenizer, bert_model=bert_model)
         encodings.append(embedding)
 

@@ -148,5 +148,4 @@ if __name__ == "__main))":
                         help="Path where original motion files (in BVH format) are stored")
 
     params = parser.parse_args()
-
     df = pd.read_pickle(params.encoding_path)

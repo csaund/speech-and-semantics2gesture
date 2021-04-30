@@ -234,6 +234,9 @@ def split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=None, sp
     elif split_by == 'timeconst':
         split_times = get_timeconst_ending_times(txt_name, int(timeconst))
         split_frames = get_frames_of_splits(split_times)
+    elif split_by == 'fillers':
+        split_times = get_filler_word_times(txt_name)
+        split_frames = get_frames_of_splits(split_times)
 
     print('SPLIT FRAMES: ', split_frames)
     print('SPLIT TIMES:', split_times)
@@ -247,6 +250,44 @@ def split_bvh_files(bvh_name, txt_name, wav_name, dest_dir, output_name=None, sp
     split_audio_at_times(wav_name, dest_file, split_times)
     split_transcript_at_times(txt_name, dest_file, split_times)
 
+
+def get_full_transcript(transcript):
+    with open(transcript) as t:
+        data = json.load(t)
+        all_words = []
+        for a in data:
+            all_words += a['alternatives'][0]['words']
+
+        txt = ""
+        for w in all_words:
+            txt += w['word'] + ' '
+        return all_words, txt
+
+
+def get_filler_word_times(transcript):
+    with open(transcript) as t:
+        data = json.load(t)
+        all_words = []
+        for a in data:
+            all_words += a['alternatives'][0]['words']
+
+        times = []
+        for w in all_words:
+            if w['word'] in ['like', 'eh'] or '.' in w['word']:
+                times.append(float(w['end_time'].split('s')[0]))
+
+        return times
+
+
+# TODO: be clever about this, but try to split on the root times.
+# tricky to align the transcript to word again.
+def get_dependency_root_times(transcript):
+    all_words, txt = get_full_transcript(transcript)
+
+    root_ids = []
+    import spacy
+    nlp = spacy.load("en_core_web_sm")
+    doc = nlp(txt)
 
 
 if __name__ == "__main__":

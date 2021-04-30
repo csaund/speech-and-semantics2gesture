@@ -50,7 +50,12 @@ def extract_joint_angles(bvh_files, fps):
 
     data_all = []
     for f in bvh_files:
-        data_all.append(p.parse(f))
+        try:
+            data_all.append(p.parse(f))
+        except:
+            print('COULD NOT PARSE BVH FILE: ', f)
+            print('skipping...')
+            continue
 
     data_pipe = Pipeline([
        ('dwnsampl', DownSampler(tgt_fps=fps,  keep_all=False)),
@@ -84,22 +89,19 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--bvh_dir', '-orig', default="../../dataset/raw_data/Motion",
                                    help="Path where original motion files (in BVH format) are stored")
-    parser.add_argument('--dest_dir', '-dest', default="../../dataset/raw_data/Motion",
-                                   help="Path where extracted motion features will be stored")
-    parser.add_argument('--pipeline_dir', '-pipe', default="utils/",
-                        help="Path where the motion data processing pipeline will be stored")
 
     params = parser.parse_args()
 
     files = []
     # Go over all BVH files
-    print("Going to pre-process the following motion files:")
     for r, d, f in os.walk(params.bvh_dir):
         for file in f:
             if '.bvh' in file:
                 ff = os.path.join(r, file)
-                basename = os.path.splitext(os.path.basename(ff))[0]
-                files.append(basename)
+                #print(ff)
+                # basename = os.path.splitext(os.path.basename(ff))[0]
+                files.append(ff)
 
-    out_data, data_pipeline = extract_joint_angles(params.bvh_dir, files, fps=20)
+    #print(files)
+    out_data, data_pipeline = extract_joint_angles(files, fps=20)
     write_bvh(data_pipeline, out_data, files, fps=20)

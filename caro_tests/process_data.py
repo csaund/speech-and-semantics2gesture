@@ -45,6 +45,8 @@ if __name__ == "__main__":
                                    help="if split gestures by wordcount, how many words")
     parser.add_argument('--timeconst', '-tc', default=10,
                                    help="if split gestures by time, how many seconds")
+    parser.add_argument('--create_videos', '-cv', default=True,
+                                   help="should we turn bvh into nice mp4s (or just do split/trasncript)")
 
     params = parser.parse_args()
     bvh_name = os.path.join(params.raw_dir, 'Motion', params.file_name + '.bvh')
@@ -82,15 +84,15 @@ if __name__ == "__main__":
     print("resampling bvh files")
     mirror_downsample_bvh(dest_dir, fps=20)
 
+    if params.create_videos:
+        # now get the mp4 videos visualized from
+        print("getting mp4s -- this takes a long time")
+        fs = [f for f in os.listdir(dest_dir) if f.endswith('bvh')]  # just test this for now!!
+        for f in tqdm(fs):
+            full_path = os.path.join(dest_dir, f)
+            output = Path(full_path).with_suffix(".mp4")
+            print(output)
+            bvh_to_video(Path(full_path), output, server_url=LOCAL_SERVER_URL)
 
-    # now get the mp4 videos visualized from
-    print("getting mp4s -- this takes a long time")
-    fs = [f for f in os.listdir(dest_dir) if f.endswith('bvh')]  # just test this for now!!
-    for f in tqdm(fs):
-        full_path = os.path.join(dest_dir, f)
-        output = Path(full_path).with_suffix(".mp4")
-        print(output)
-        bvh_to_video(Path(full_path), output, server_url=LOCAL_SERVER_URL)
-
-    print("marrying matching mp4 and wav")
-    combine_av_for_dir(dest_dir)
+        print("marrying matching mp4 and wav")
+        combine_av_for_dir(dest_dir)
