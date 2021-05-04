@@ -80,11 +80,11 @@ if __name__ == "__main__":
     audio_files = [f for f in fns if f.endswith('.wav')]
     get_time_histogram(transcript_files, dest_dir)
 
-    # now can resample the bvh
-    print("resampling bvh files")
-    mirror_downsample_bvh(dest_dir, fps=20)
+    if params.create_videos != "False" or params.create_videos != "F":
+        # now can resample the bvh
+        print("resampling bvh files")
+        mirror_downsample_bvh(dest_dir, fps=20)
 
-    if params.create_videos:
         # now get the mp4 videos visualized from
         print("getting mp4s -- this takes a long time")
         fs = [f for f in os.listdir(dest_dir) if f.endswith('bvh')]  # just test this for now!!
