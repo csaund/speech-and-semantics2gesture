@@ -606,8 +606,8 @@ def get_embeddings_for_dir(dir_path):
         words = [w for w in transcript if w not in fillers]
         # todo: get embedding with fillers only if the transcript is ONLY fillers?
         # todo: maybe make a special embedding for it???
-        # todo CARO currently getting embeddings for FILLERS ONLY. is this what we want??
-        # todo: will that form a cluster??????
+        # todo the below currently gets embeddings for transcripts with FILLERS ONLY. is this what we want??
+        # todo: we drop these eventually so no worries.
         if not words:
             words = transcript
         transcripts.append(words)
