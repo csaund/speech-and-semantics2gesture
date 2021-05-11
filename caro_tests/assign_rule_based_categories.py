@@ -15,7 +15,7 @@ SEMANTIC_CATEGORIES = {
     'DIRECTION': [' up', ' down', 'left', 'right', 'top', 'bottom', 'side', 'sideways', 'aside'],
     'TIME': ['start', 'finish', 'begin', ' end', 'forever', 'recent', 'years', 'always', ' now', \
             'behind', 'before', 'after', 'as soon as', 'grew up', 'last night', 'yesterday', 'then'],
-    'SEPARATION': ['more than', 'separate from', 'other', 'over there', 'aside', 'different', 'another', \
+    'SEPARATION': ['more than', 'separate from', ' other', 'over there', 'aside', 'different', 'another', \
                   'withdraw', 'between', 'outside', 'also'],
     'TOGETHER': ['together', 'bring in', 'incorporate', 'interact', 'association', 'associate'],
     'UNCERTAIN': ['maybe', 'kind of', 'sort of'],
@@ -37,6 +37,22 @@ SEMANTIC_CATEGORIES = {
     'PATHS': ['going', 'went', 'journey', 'becoming', 'go off', 'come back', 'goes'],
     'CAUSE': ['because', 'due to', 'owing to']
 }
+
+
+# TODO fix the pipeline so this hacky garbage doesn't need to be here.
+def get_video_fn_from_json_fn(jfn, vid_dir):
+    vid_files = os.listdir(vid_dir)
+    splits = jfn.split('_')
+    # need to match the first 4 splits
+    candidates = [v for v in vid_files if v.split('_')[:4] == splits[:4]]
+    vid_fn = [f for f in candidates if f.endswith('.mp4')]
+    if len(vid_fn) > 1:
+        vid_fn = [f for f in vid_fn if 'sound' not in vid_fn]
+    if len(vid_fn) < 1:
+        print('couldnt get a video fn for ', jfn)
+        print(vid_fn)
+        return ''
+    return vid_fn[0]
 
 
 # from DF, builds adjacency matrix of co-occurrences of categories
@@ -80,10 +96,11 @@ def build_chord_diagram(df, show_details=False, output='category_chord.html'):
             width=600,
             label_color="#454545",
             wrap_labels=False,
-            margin=70,
+            margin=100,
             credit=False,
             font_size="12px",
-            font_size_large="16px").to_html(output)
+            font_size_large="16px",
+            allow_download=True).to_html(output)
     else:
         Chord(M, names,
             colors="d3.schemeSet1",
@@ -92,10 +109,11 @@ def build_chord_diagram(df, show_details=False, output='category_chord.html'):
             width=600,
             label_color="#454545",
             wrap_labels=False,
-            margin=70,
+            margin=100,
             credit=False,
             font_size="12px",
-            font_size_large="16px").to_html(output)
+            font_size_large="16px",
+            allow_download=True).to_html(output)
 
 
 # uses vectors to build a difference matrix
@@ -193,6 +211,8 @@ def get_max_similarity_score(df):
 
 def get_vector_distances(vecs):
     dists = []
+    if len(vecs) == 0 or len(vecs) == 1:
+        return [0]
     for i in range(len(vecs)):
         for j in range(len(vecs)):
             dists.append(np.linalg.norm(vecs[i] - vecs[j]))
@@ -283,6 +303,9 @@ def get_nearest_non_overlapping_gesture(df, row):
 # from cluster k, get a random pair of closest gestures
 def get_random_closest_gestures_within_cluster(clusters, k):
     df = clusters[k]['df']
+    if len(df) < 2:
+        print("LEN DF: ", len(df))
+        return df.iloc[0], df.iloc[0], 0
     r = df.iloc[random.randint(0, len(df)-1)]
     nr, d = get_nearest_row_vectors(df, r)
     return r, nr, d
@@ -290,6 +313,8 @@ def get_random_closest_gestures_within_cluster(clusters, k):
 
 def get_random_gesture_within_cluster(clusters, k):
     df = clusters[k]['df']
+    if len(df) < 2:
+        return df.iloc[0], df.iloc[0], 0
     ind1 = random.randint(0, len(df)-1)
     ind2 = random.randint(0, len(df)-1)
     while ind1 == ind2:
@@ -357,6 +382,80 @@ def assign_categories(df):
     return df
 
 
+def get_nearest_gesture_by_encoding_dist(df, r):
+    v = r['encoding']
+    if len(df) < 2:
+        print('WEE BABBY DF FOUND')
+        return df.iloc[0], 0
+    tdf = df.copy()
+    tdf['comp_dists'] = tdf.apply(lambda row: np.linalg.norm(row['encoding'][0] - v[0]), axis=1)
+    tdf = tdf.sort_values(by='comp_dists', ascending=True)
+    if tdf.iloc[0]['PHRASE'] == r['PHRASE']:
+        return tdf.iloc[1], tdf.iloc[1]['comp_dists']
+    else:
+        return tdf.iloc[0], tdf.iloc[0]['comp_dists']      # we got a perfect match, this would only happen if exact same transcript.
+
+
+def get_far_gesture_by_encoding(df, r, sample=10):
+    v = r['encoding']
+    if len(df) < 2:
+        return df.iloc[0]
+    tdf = df.copy()
+    tdf['comp_dists'] = tdf.apply(lambda row: np.linalg.norm(row['encoding'][0] - v[0]), axis=1)
+    tdf = tdf.sort_values(by='comp_dists', ascending=False)
+    tdf = tdf[:sample]      # sample from top N furthest
+    si = random.randint(0, sample-1)
+    if si >= len(tdf):
+        return tdf.iloc[0], tdf.iloc[0]['comp_dists']   # if we can't sample from furthest N, just return furthest.
+    return tdf.iloc[si], tdf.iloc[si]['comp_dists'] # guaranteed to not be the same bc
+
+
+def get_transcript_close_and_far_embedding(clusters, k, df):
+    cdf = clusters[k]['df']
+    ind1 = random.randint(0, len(cdf)-1)
+    r1 = cdf.iloc[ind1]
+    r2, d2 = get_nearest_gesture_by_encoding_dist(df, r1)   # cluster agnostic!!
+    r3, _ = get_far_gesture_by_encoding(df, r1)            # cluster agnostic!!
+    return r1, r2, d2, r3
+
+
+def get_transcript_random_and_far_embedding(clusters, k, df):
+    cdf = clusters[k]['df']
+    ind1 = random.randint(0, len(cdf)-1)
+    ind2 = random.randint(0, len(df)-1)
+    r1 = cdf.iloc[ind1]
+    r2 = df.iloc[ind2]
+    # cluster agnostic!!
+    d = np.linalg.norm(r1['encoding'][1] - r2['encoding'][1])
+    r3, _ = get_far_gesture_by_encoding(df, r1)            # cluster agnostic!!
+    return r1, r2, d, r3
+
+
+# adds Cluster key of value k to df
+def add_semantic_key(df, k):
+    df['cluster'] = k
+    return df
+
+
+def get_time_lambda(row):
+    sp = row['fn'].split('_')
+    t0 = sp[5]
+    t1 = sp[6].split('.json')[0]
+    if t1 == '+':
+        return 10            # todo lol this is just absolutely made up.
+    else:
+        return float(t1) - float(t0)
+
+
+def get_embedding_distances(r1, r2):
+    """
+    given two rows, gets the distance between their vector embedding
+    """
+    v1 = r1['encoding']
+    v2 = r2['encoding']
+    return np.linalg.norm(v1[0] - v2[0])
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--file', '-f', default="",
@@ -367,6 +466,8 @@ if __name__ == "__main__":
                                    help="what to name the output csv")
     parser.add_argument('--cluster_output', '-co', default="cluster_output.pkl",
                                    help="what to name the cluster output")
+    parser.add_argument('--video_dir', '-cd', default="Splits/combo_fillers",
+                                   help="file where all the video fns are")
     params = parser.parse_args()
     f = params.file
     embeddings = params.embedding_file
@@ -400,14 +501,17 @@ if __name__ == "__main__":
     # get the feature vector
     df['vector'] = df.apply(get_value_vector, axis=1)
 
-    # df.to_csv(params.output)
+    # TODO ah yes here is the hacky garbage.
+    # TEMP for testing ONLY
+    video_dir = os.path.join("speech-and-semantics2gesture", "Splits", "combo_fillers")
+    df['video_fn'] = df.apply(lambda row: get_video_fn_from_json_fn(row['fn'], video_dir), axis=1)
+
+    # TODO exclude gestures that are too short?
+    df['time_length'] = df.apply(lambda row: get_time_lambda(row), axis=1)
+    df = df[df['time_length'] >= 1.8]   # arbitrary...
 
     # get the clusters
     clusters = create_category_clusters(df)
-
-    # print them if you want
-    with open(params.cluster_output, 'w') as out:
-        json.dump(clusters, out)
 
     # view it
     build_chord_diagram(df, show_details=False, output='category_chord.html')
@@ -415,24 +519,73 @@ if __name__ == "__main__":
     # get some stats
     profile_df = get_cluster_profiles(clusters, df)
 
-    # and get some examples
-    k = 'CATEGORICAL'
+    exp_df = pd.DataFrame(columns=['transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category'])
+    # build up a df of examples
+    for k in SEMANTIC_CATEGORIES.keys():
+        print("WORKING ON CATEGORY: ", k)
+        # get some random closest gestures within a given cluster
+        if len(clusters[k]['df']) < 2:
+            print('NOT ENOUGH GESTURES FOR CLUSTER ', k)
+            continue
 
-    r, nr, d_closest = get_random_closest_gestures_within_cluster(clusters, k)
-    print(r['PHRASE'], ' // ', nr['PHRASE'], '(%s)' % d_closest)
-    print(r['fn'], ' // ', nr['fn'])
+        r, nr, d_closest = get_random_closest_gestures_within_cluster(clusters, k)
+        print(r['PHRASE'], ' // ', nr['PHRASE'], '(%s)' % d_closest)
+        print(r['fn'], ' // ', nr['fn'])
 
-    r1, r2, d_close, r3 = get_transcript_close_and_far_gesture(clusters, k, df)
-    print('Phrase to match: %s' % r1['PHRASE'])
-    print('gesture options: ')
-    print(r2['fn'])
-    print(r3['fn'])
-    print('(nearest gesture is %s away)' % d_close)
+        # get a transcript for a gesture, then a fn for a gesture that is
+        # very close and a gesture that is not in any overlapping clusters
+        r1, r2, d_close, r3 = get_transcript_close_and_far_gesture(clusters, k, df)
+        print('Phrase to match: %s' % r1['PHRASE'], "(%s)" % r1['fn'])
+        print('gesture options: ')
+        print(r2['fn'])
+        print(r3['fn'])
+        print('(nearest gesture is %s away)' % d_close)
 
-    r4, r5, d_random, r6 = get_transcript_random_and_far_gesture(clusters, k, df)
-    print('Phrase to match: %s' % r1['PHRASE'])
-    print('gesture options: ')
-    print(r2['fn'])
-    print(r3['fn'])
-    print('(nearest gesture is %s away)' % d_random)
+        # get a transcript for a gesture, then a fn for a gesture that is
+        # in the same cluster and a gesture that is not in any overlapping clusters
+        r4, r5, d_random, r6 = get_transcript_random_and_far_gesture(clusters, k, df)
+        print('Phrase to match: %s' % r4['PHRASE'], "(%s)" % r4['fn'])
+        print('gesture options: ')
+        print(r2['fn'])
+        print(r3['fn'])
+        print('(nearest gesture is %s away)' % d_random)
 
+        # get a transcript for a gesture, then a fn for a gesture that is
+        # close according to sentence embeddings, and one that is far according to sentence embeddings
+        r7, r8, d_emb_close, r9 = get_transcript_close_and_far_embedding(clusters, k, df)
+        print('Phrase to match: %s' % r7['PHRASE'], "(%s)" % r7['fn'])
+        print('gesture options: ')
+        print(r8['fn'])
+        print(r9['fn'])
+        print('(nearest gesture is %s away)' % d_emb_close)
+
+        # get a transcript for a gesture, then a fn for a gesture that is
+        # close according to sentence embeddings, and one that is random according to sentence embeddings
+        r10, r11, d_emb_random, r12 = get_transcript_random_and_far_embedding(clusters, k , df)
+        print('Phrase to match: %s' % r10['PHRASE'], "(%s)" % r10['fn'])
+        print('gesture options: ')
+        print(r11['fn'])
+        print(r12['fn'])
+        print('(nearest gesture is %s away)' % d_emb_random)
+
+        # format it for the df
+        transcripts = [ex['PHRASE'] for ex in [r1, r2, r7, r10]]
+        video1_fn = [ex['video_fn'] for ex in [r2, r5, r8, r11]]
+        video2_fn = [ex['video_fn'] for ex in [r3, r6, r9, r12]]
+        video_relation = ['close_same_cluster', 'random_same_cluster', 'close_far_embedding', 'close_random_embedding']
+        cluster_distances = [d_close, d_random, None, None]
+        embedding_distances = [get_embedding_distances(r2, r3), get_embedding_distances(r5, r6), d_emb_close, d_emb_random]
+        category = [k, k, k, k]
+        ndf = pd.DataFrame(list(zip(transcripts, video1_fn, video2_fn, video_relation, cluster_distances, embedding_distances, category)),
+                           columns=['transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category'])
+        exp_df = exp_df.append(ndf)
+
+
+    # save this shit!!!
+    # print them if you want
+    outname = params.cluster_output
+    dfs = [clusters[k]['df'] for k in clusters.keys()]
+    comb_df = pd.concat([add_semantic_key(clusters[k]['df'], k) for k in clusters.keys()])
+
+    comb_df.to_pickle(outname + 'clusters.pkl')
+    profile_df.to_pickle(outname + 'clusters_profile.pkl')
