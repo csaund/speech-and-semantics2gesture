@@ -42,13 +42,19 @@ SEMANTIC_CATEGORIES = {
 def get_transcript_close_far_gesture_sets(clusters, k, df):
     row = clusters[k]['df'].sample(1).iloc[0]
     close_gesture, d = get_closest_gesture_from_row_sets(row, df)
-    far_gesture, _, _ = get_random_gesture_within_cluster(clusters, k)
+    samp = df.sample(100)
+    samp = samp[samp['video_fn'] != row['video_fn']]
+    far_gesture = get_closest_timing_to_row(row, samp)  # control for timing
     return row, close_gesture, d, far_gesture
 
 
+def get_set_categories(row):
+    return set([k for k in list(row.keys()) if k in SEMANTIC_CATEGORIES.keys() and row[k] != '-'])
+
+
 def get_set_overlap(r1, r2):
-    r1_cats = set([k for k in list(r1.keys()) if k in SEMANTIC_CATEGORIES.keys() and r1[k] != '-'])
-    r2_cats = set([k for k in list(r2.keys()) if k in SEMANTIC_CATEGORIES.keys() and r2[k] != '-'])
+    r1_cats = get_set_categories(r1)
+    r2_cats = get_set_categories(r2)
     int = set.intersection(r1_cats, r2_cats)
     diff = r2_cats - r1_cats - int
     return int, diff
@@ -82,10 +88,18 @@ def get_closest_gesture_from_row_sets(row, df, n=10):
     tdf = tdf.sort_values('sort', ascending=False)
 
     # take top n and choose randomly from it
-    ret = tdf[:n].sample(1).iloc[0]
-    while ret['video_fn'] == row['video_fn']:   # if we got the exact same one
-        ret = tdf[:n].sample(1).iloc[0]               # just try another sample
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
+    ret = get_closest_timing_to_row(row, tdf[:10])  # send our top 10 candidates
     return ret, ret['sort']
+
+
+# given a df and a row, gets the row from df closest to length of original row
+def get_closest_timing_to_row(row, df):
+    match_time = row['time_length']
+    tdf = df.copy()
+    tdf['timing_diff'] = tdf.apply(lambda r: abs(r['time_length'] - match_time), axis=1)
+    tdf = tdf.sort_values('timing_diff')
+    return tdf.iloc[0]
 
 
 # TODO fix the pipeline so this hacky garbage doesn't need to be here.
@@ -475,7 +489,7 @@ def get_transcript_random_and_far_embedding(clusters, k, df):
     r1 = cdf.iloc[ind1]
     r2 = df.iloc[ind2]
     # cluster agnostic!!
-    d = np.linalg.norm(r1['encoding'][1] - r2['encoding'][1])
+    d = np.linalg.norm(r1['encoding'][0] - r2['encoding'][0])
     r3, _ = get_far_gesture_by_encoding(df, r1)            # cluster agnostic!!
     return r1, r2, d, r3
 
@@ -568,7 +582,10 @@ if __name__ == "__main__":
     # get some stats
     profile_df = get_cluster_profiles(clusters, df)
 
-    COLS = ['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category', 'video1_transcript', 'video2_transcript']
+    COLS = ['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn',
+            'video_relation', 'cluster_distances', 'embedding_distances', 'category',
+            'video1_transcript', 'video2_transcript', 'vidA_overlap', 'vidB_overlap',
+            'transcript_categories', 'transcript_length', 'vidA_length', 'vidB_length']
 
     exp_df = pd.DataFrame(columns=COLS)
     # build up a df of examples
@@ -651,15 +668,29 @@ if __name__ == "__main__":
         video2_fn = [r15['video_fn']]
         video1_transcript = [r14['PHRASE']]
         video2_transcript = [r15['PHRASE']]
-        video_relation = ['set_closest']
+        video_relation = ['set_vs_random']
         cluster_distances = [d_set]
         category = [k]
-        display = ['video_matching']
-        embedding_distances = get_set_overlap(r13, r14)
+        display = ['video_matching_set']
+        vidA_overlap = [get_set_overlap(r13, r14)]
+        vidB_overlap = [get_set_overlap(r13, r15)]
+        transcript_categories = [get_set_categories(r13)]
+        transcript_length = [r13['time_length']]
+        vidA_length = [r14['time_length']]
+        vidB_length = [r15['time_length']]
         randomise_trials = [1]
         # embedding_distances = []
-        ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, video1_fn, video2_fn, video_relation, cluster_distances, embedding_distances, category, video1_transcript, video2_transcript)),
-                           columns=['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category', 'video1_transcript', 'video2_transcript'])
+        """
+            COLS = ['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn',
+            'video_relation', 'cluster_distances', 'embedding_distances', 'category',
+            'video1_transcript', 'video2_transcript', 'vidA_overlap', 'vidB_overlap',
+            'transcript_categories', 'transcript_length', 'vidA_length', 'vidB_length']
+        """
+        ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, video1_fn, video2_fn,
+                                    video_relation, cluster_distances, embedding_distances, category,
+                                    video1_transcript, video2_transcript, vidA_overlap, vidB_overlap,
+                                    transcript_categories, transcript_length, vidA_length, vidB_length)),
+                           columns=COLS)
         exp_df = exp_df.append(ndf)
 
     # create an experimental block?
