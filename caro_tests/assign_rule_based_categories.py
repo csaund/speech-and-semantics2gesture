@@ -39,6 +39,55 @@ SEMANTIC_CATEGORIES = {
 }
 
 
+def get_transcript_close_far_gesture_sets(clusters, k, df):
+    row = clusters[k]['df'].sample(1).iloc[0]
+    close_gesture, d = get_closest_gesture_from_row_sets(row, df)
+    far_gesture, _, _ = get_random_gesture_within_cluster(clusters, k)
+    return row, close_gesture, d, far_gesture
+
+
+def get_set_overlap(r1, r2):
+    r1_cats = set([k for k in list(r1.keys()) if k in SEMANTIC_CATEGORIES.keys() and r1[k] != '-'])
+    r2_cats = set([k for k in list(r2.keys()) if k in SEMANTIC_CATEGORIES.keys() and r2[k] != '-'])
+    int = set.intersection(r1_cats, r2_cats)
+    diff = r2_cats - r1_cats - int
+    return int, diff
+
+
+def get_closest_gesture_from_row_sets(row, df, n=10):
+    """
+    Given a df and a row within that df, calculates the closest
+    gesture semantically given the semantic categories assigned to that given row.
+
+    Does this by finding gestures in the DF with maximal intersection and
+    minimal difference of the categories.
+    """
+    # get the categories of the row
+    target_cats = set([k for k in list(row.keys()) if k in SEMANTIC_CATEGORIES.keys() and row[k] != '-'])
+
+    # get the categories of every row in the df
+    tdf = df.copy()
+    tdf['category_set'] = tdf.apply(lambda r: \
+            set([k for k in list(r.keys()) if k in SEMANTIC_CATEGORIES.keys() and r[k] != '-']),
+            axis=1)
+
+    # get intersection and prioritize those with NO non-existing other-categories
+    tdf['intersection'] = tdf.apply(lambda r: set.intersection(target_cats, r['category_set']), axis=1)
+    tdf['intersection_len'] = tdf.apply(lambda r: len(r['intersection']), axis=1)
+    tdf['difference'] = tdf.apply(lambda r: r['category_set'] - target_cats - r['intersection'], axis=1)
+    # make this difference negative to be a bit hacky around the sorting
+    tdf['difference_len'] = tdf.apply(lambda r: len(r['difference']), axis=1)
+    tdf['sort'] = tdf.apply(lambda r: r['intersection_len'] - r['difference_len'], axis=1)
+    # sort by max intersection len and minimum difference overlap
+    tdf = tdf.sort_values('sort', ascending=False)
+
+    # take top n and choose randomly from it
+    ret = tdf[:n].sample(1).iloc[0]
+    while ret['video_fn'] == row['video_fn']:   # if we got the exact same one
+        ret = tdf[:n].sample(1).iloc[0]               # just try another sample
+    return ret, ret['sort']
+
+
 # TODO fix the pipeline so this hacky garbage doesn't need to be here.
 def get_video_fn_from_json_fn(jfn, vid_dir):
     vid_files = os.listdir(vid_dir)
@@ -519,7 +568,9 @@ if __name__ == "__main__":
     # get some stats
     profile_df = get_cluster_profiles(clusters, df)
 
-    exp_df = pd.DataFrame(columns=['transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category'])
+    COLS = ['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category', 'video1_transcript', 'video2_transcript']
+
+    exp_df = pd.DataFrame(columns=COLS)
     # build up a df of examples
     for k in SEMANTIC_CATEGORIES.keys():
         print("WORKING ON CATEGORY: ", k)
@@ -561,24 +612,58 @@ if __name__ == "__main__":
 
         # get a transcript for a gesture, then a fn for a gesture that is
         # close according to sentence embeddings, and one that is random according to sentence embeddings
-        r10, r11, d_emb_random, r12 = get_transcript_random_and_far_embedding(clusters, k , df)
+        r10, r11, d_emb_random, r12 = get_transcript_random_and_far_embedding(clusters, k, df)
         print('Phrase to match: %s' % r10['PHRASE'], "(%s)" % r10['fn'])
         print('gesture options: ')
         print(r11['fn'])
         print(r12['fn'])
         print('(nearest gesture is %s away)' % d_emb_random)
 
+        r13, r14, d_set, r15 = get_transcript_close_far_gesture_sets(clusters, k, df)
+        print('Phrase to match: %s' % r13['PHRASE'], "(%s)" % r13['fn'])
+        print('gesture options: ')
+        print(r14['fn'])
+        print(r15['fn'])
+        print('(nearest gesture is %s away)' % d_set)
+
+        # TODO update spreadsheet answer values
+
         # format it for the df
-        transcripts = [ex['PHRASE'] for ex in [r1, r2, r7, r10]]
-        video1_fn = [ex['video_fn'] for ex in [r2, r5, r8, r11]]
-        video2_fn = [ex['video_fn'] for ex in [r3, r6, r9, r12]]
-        video_relation = ['close_same_cluster', 'random_same_cluster', 'close_far_embedding', 'close_random_embedding']
-        cluster_distances = [d_close, d_random, None, None]
-        embedding_distances = [get_embedding_distances(r2, r3), get_embedding_distances(r5, r6), d_emb_close, d_emb_random]
-        category = [k, k, k, k]
-        ndf = pd.DataFrame(list(zip(transcripts, video1_fn, video2_fn, video_relation, cluster_distances, embedding_distances, category)),
-                           columns=['transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category'])
+        #transcripts = [ex['PHRASE'] for ex in [r1, r4, r7, r10]]
+        #video1_fn = [ex['video_fn'] for ex in [r2, r5, r8, r11]]
+        #video1_transcript = [ex['PHRASE'] for ex in [r2, r5, r8, r11]]
+        #video2_fn = [ex['video_fn'] for ex in [r3, r6, r9, r12]]
+        #video2_transcript = [ex['PHRASE'] for ex in [r3, r6, r9, r12]]
+        #video_relation = ['close_same_cluster', 'random_same_cluster', 'close_far_embedding', 'close_random_embedding']
+        #cluster_distances = [d_close, d_random, None, None]
+        #embedding_distances = [get_embedding_distances(r2, r3), get_embedding_distances(r5, r6), d_emb_close, d_emb_random]
+        #category = [k] * 4
+        #display = ['video_matching'] * 4
+        #randomise_trials = [1, 2, 3, 4]
+        #random.shuffle(randomise_trials)
+        #ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, video1_fn, video2_fn, video_relation, cluster_distances, embedding_distances, category, video1_transcript, video2_transcript)),
+        #                   columns=['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category', 'video1_transcript', 'video2_transcript'])
+        #exp_df = exp_df.append(ndf)
+
+
+        transcripts = [r13['PHRASE']]
+        video1_fn = [r14['video_fn']]
+        video2_fn = [r15['video_fn']]
+        video1_transcript = [r14['PHRASE']]
+        video2_transcript = [r15['PHRASE']]
+        video_relation = ['set_closest']
+        cluster_distances = [d_set]
+        category = [k]
+        display = ['video_matching']
+        embedding_distances = get_set_overlap(r13, r14)
+        randomise_trials = [1]
+        # embedding_distances = []
+        ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, video1_fn, video2_fn, video_relation, cluster_distances, embedding_distances, category, video1_transcript, video2_transcript)),
+                           columns=['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category', 'video1_transcript', 'video2_transcript'])
         exp_df = exp_df.append(ndf)
+
+    # create an experimental block?
+    # exp_df.sample(25)
 
 
     # save this shit!!!
