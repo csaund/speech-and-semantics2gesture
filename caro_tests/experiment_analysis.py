@@ -40,4 +40,23 @@ if __name__ == "__main__":
     l.remove('')
     set(l)
 
-    exit(0)
+    """
+    Analyses: 
+    - how often did they choose our predicted video in:
+        - E  vs. R
+        - SO vs. R
+        - DO vs. R
+        ** compared to R vs. R baseline
+    - In our experimental conditions (EvSO, EvDO, SOvDO) which video was preferred most often? 
+    - Overall, how much CLOSER was the chosen video's semantic EMBEDDING to the transcript than the not chosen gesture?
+    - Overall, how many MORE set overlaps were in the chosen video's SEMANTIC SET to the transcript than not chosen?
+        - for SO
+        - for DO
+    - Semantic category breakdown:
+        - if we isolate certain semantics, can we make it better? 
+        - e.g. analyses without container, without dynamic, etc. 
+    - How detrimental are semantics that are NOT present in transcript that ARE present in gesture?
+        - remove cases in which predicted video contains categories not present in transcript
+        - look at average INTERSECTION of chosen video vs not chosen (SO, DO)
+        - look at average DIFFERENCE of chosen video vs. not chosen (SO, DO)
+    """
