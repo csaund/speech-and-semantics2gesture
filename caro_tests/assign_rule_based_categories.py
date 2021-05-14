@@ -7,7 +7,10 @@ from scipy.spatial.distance import cdist, pdist
 import random
 from chord import Chord
 from shutil import copyfile
-
+from caro_tests.ontology_generator import CII
+from tqdm import tqdm
+import string
+tqdm.pandas()
 
 SEMANTIC_CATEGORIES = {
     'FEELINGS': ['angry', 'sad', 'happy', 'love', 'passion', 'anxious', 'stress', 'worry', 'worried', 'anger.', 'anger'],
@@ -40,9 +43,9 @@ SEMANTIC_CATEGORIES = {
 }
 
 
-def get_random_row(df):
-    row = df.sample(1).iloc[0]
-    return row
+def get_random_row(df, row=None):
+    r = df.sample(1).iloc[0]
+    return r
 
 
 def get_transcript_embedding_v_random(clusters, k, df):
@@ -61,7 +64,7 @@ def get_transcript_set_v_embedding(clusters, k, df):
     return row, set_gesture, embedding_gesture
 
 
-def get_closest_gesture_from_row_embeddings(row, df):
+def get_closest_gesture_from_row_embeddings(df, row):
     v = row['encoding']
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
@@ -95,6 +98,31 @@ match T. These videos are split into the following goups:
 """
 
 
+def get_overlap_sim_starting_at_ij(S1, S2, i, j):
+    tot = 0
+    while i != len(S1) and j != len(S2):
+        tot += len(S1[i].intersection(S2[j]))
+        i += 1
+        j += 1
+    return tot
+
+
+def calculate_set_sequence_similarity(S1, S2):
+    m = 0
+    for i in range(len(S1)):
+        for j in range(len(S2)):
+            overlap_pos = get_overlap_sim_starting_at_ij(S1, S2, i, j)
+            m = max(m, overlap_pos)
+    return m
+
+
+def get_total_ontologies(row):
+    tot = 0
+    for s in row['ont_sequence']:
+        tot += len(s)
+    return tot
+
+
 def get_transcript_gesture_match(cluster_df, full_df, matching_fxn1, matching_fxn2):
     """
     Given a sub-df to get a random gesture from, gets a random gesture
@@ -102,27 +130,60 @@ def get_transcript_gesture_match(cluster_df, full_df, matching_fxn1, matching_fx
     For a description of potential matches see the above comment.
     """
     row = get_random_row(cluster_df)
-    t0 = matching_fxn1(row, full_df)
-    t1 = matching_fxn2(full_df)
+    t0 = matching_fxn1(full_df, row)
+    t1 = matching_fxn2(full_df, row)
     return row, t0, t1
 
 
-# todo implement this
-def get_shallow_ontology_gesture_match(row, df):
+def get_ontology_sequence_match(df, row):
+    transcript_ont = row['ont_sequence']
+    tdf = df.copy()
+    tdf['sequence_val'] = tdf.progress_apply(lambda r: calculate_set_sequence_similarity(transcript_ont, r['ont_sequence']), axis=1)
+    tdf = tdf.sort_values('sequence_val', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
+    r = get_closest_timing_to_row(row, tdf[:10])
+    return r
+
+
+def get_extont_sequence_match(df, row):
+    transcript_ont = row['extont_sequence']
+    tdf = df.copy()
+    tdf['sequence_val'] = tdf.progress_apply(lambda r: calculate_set_sequence_similarity(transcript_ont, r['extont_sequence']), axis=1)
+    tdf = tdf.sort_values('sequence_val', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
+    r = get_closest_timing_to_row(row, tdf[:10])
+    return r
+
+
+def get_shallow_ontology_gesture_match(df, row):
     """
     Based on row, looks for closest match based on shallow ontology in df.
     Gets top 10 matches and chooses the one that is the most similar in length.
     """
-    return row
+    transcript_ont = row['shallow_ont']
+    tdf = df.copy()
+    tdf['ont_overlap'] = tdf.apply(lambda r: len(transcript_ont.intersection(r['shallow_ont'])), axis=1)
+    tdf = tdf.sort_values('ont_overlap', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
+    r = get_closest_timing_to_row(row, tdf[:10])
+    return r
 
 
-# todo implement
-def get_deep_ontology_gesture_match(row, df):
+def get_deep_ontology_gesture_match(df, row):
     """
-    Based on row, looks for closest match based on deep ontology in df.
+    Based on row, looks for closest match based on shallow ontology in df.
     Gets top 10 matches and chooses the one that is the most similar in length.
     """
-    return row
+    transcript_ont = row['deep_ont']
+    if not row['deep_ont']:         ## empty set of deep ontology
+        print('NO DEEP ONTOLOGY FOUND')
+        return get_shallow_ontology_gesture_match(row, df)
+    tdf = df.copy()
+    tdf['ont_overlap'] = tdf.apply(lambda r: len(transcript_ont.intersection(r['deep_ont'])), axis=1)
+    tdf = tdf.sort_values('ont_overlap', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
+    r = get_closest_timing_to_row(row, tdf[:10])
+    return r
 
 
 def get_set_categories(row):
@@ -137,12 +198,77 @@ def get_set_overlap(r1, r2):
     return int, diff
 
 
-def get_shallow_ontology(row):
-    return set()
+def get_ontology_sequence(row, cere):
+    p = row['PHRASE']
+    feat_set = cere.generate(p)
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    ont_sequence = []
+    for w in words:
+        if w in feat_set.keys():
+            if 'Ont' in feat_set[w].keys():
+                ont_sequence.append(feat_set[w]['Ont'][1])
+    return ont_sequence
 
 
-def get_deep_ontology(row):
-    return set()
+def get_extont_sequence(row, cere):
+    p = row['PHRASE']
+    feat_set = cere.generate(p)
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    ont_sequence = []
+    for w in words:
+        if w in feat_set.keys():
+            if 'ExtOnt' in feat_set[w].keys():
+                ont_sequence.append(feat_set[w]['ExtOnt'][1])
+            elif 'Ont' in feat_set[w].keys():
+                ont_sequence.append(feat_set[w]['Ont'])
+    return ont_sequence
+
+
+def get_shallow_ontology(row, cere):
+    p = row['PHRASE']
+    feat_set = cere.generate(p)
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    ont_sequence = []
+    for w in words:
+        ont_sequence.append(feat_set[w]) if w in feat_set.keys() else print('didnt find word: ', w)
+    return ont_sequence
+
+
+def get_deep_ontology(row, cere):
+    p = row['PHRASE']
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    phrase_ont = set()
+    phrase_exont = set()
+    phrase_hypernyms = set()
+    for w in words:
+        if w not in cere.FeatSet.keys():
+            continue
+        feats = cere.FeatSet[w]
+        # phrase_ont = phrase_ont.union(set(feats['Ont'][1])) if 'Ont' in feats.keys() else phrase_ont
+        phrase_exont = phrase_exont.union(set(feats['ExtOnt'][1])) if 'ExtOnt' in feats.keys() else phrase_exont
+        # phrase_hypernyms = phrase_hypernyms.union(set(feats['Hyper_Synonyms'])) if 'Hyper_Synonyms' in feats.keys() else phrase_hypernyms
+    return phrase_exont
+
+
+def get_hypernyms(row, cere):
+    p = row['PHRASE']
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    phrase_ont = set()
+    phrase_exont = set()
+    phrase_hypernyms = set()
+    for w in words:
+        if w not in cere.FeatSet.keys():
+            continue
+        feats = cere.FeatSet[w]
+        # phrase_ont = phrase_ont.union(set(feats['Ont'][1])) if 'Ont' in feats.keys() else phrase_ont
+        # phrase_exont = phrase_exont.union(set(feats['ExtOnt'])) if 'ExtOnt' in feats.keys() else phrase_exont
+        phrase_hypernyms = phrase_hypernyms.union(set(feats['Hyper_Synonyms'][1])) if 'Hyper_Synonyms' in feats.keys() else phrase_hypernyms
+    return phrase_hypernyms
 
 
 def get_closest_gesture_from_row_sets(row, df, n=10):
@@ -617,6 +743,17 @@ def write_fns_in_df_to_folder(df, host_dirname="combo_fillers", dirname="stimuli
         copyfile(src, dest)
 
 
+def initialize_ontologies(df):
+    print("Initializing all phrase ontologies")
+    cere = CII()
+    phrases = df.PHRASE.values
+    # this intializes the FeatSet in cere to include all our words!
+    for p in tqdm(phrases):
+        cere.generate(p, debprint=False)
+    return cere
+
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--file', '-f', default="",
@@ -659,12 +796,17 @@ if __name__ == "__main__":
         df = df.dropna(subset=list(SEMANTIC_CATEGORIES.keys()), how='all')      # toss all gestures that have none of our semantics
         df = df.fillna('-')
 
+    cere = CII()
+    # TODO get the Shallow and Deep ontologies here
+    df['shallow_ont'] = df.apply(lambda row: get_shallow_ontology(row, cere), axis=1)
+    df['deep_ont'] = df.apply(lambda row: get_deep_ontology(row, cere), axis=1)
+    df['hypernyms'] = df.apply(lambda row: get_hypernyms(row, cere), axis=1)
+
+
+    df['ont_sequence'] = df.progress_apply(lambda row: get_ontology_sequence(row, cere), axis=1)
+
     # get the feature vector
     df['vector'] = df.apply(get_value_vector, axis=1)
-
-    # TODO get the Shallow and Deep ontologies here
-    # df['shallow_ont'] = df.apply(get_shallow_ontology, axis=1)
-    # df['deep_ont'] = df.apply(get_deep_ontology, axis=1)
 
     # TODO ah yes here is the hacky garbage.
     video_dir = os.path.join("speech-and-semantics2gesture", "Splits", "combo_fillers")
@@ -689,7 +831,8 @@ if __name__ == "__main__":
             'vidA_shallow_ont', 'vidB_shallow_ont', 'vidA_deep_ont', 'vidB_deep_ont',
             'transcript_shallow', 'transcript_deep', 'transcript_length',
             'vidA_length', 'vidB_length',
-            'vidA_embedding_distance', 'vidB_embedding_distance']
+            'vidA_embedding_distance', 'vidB_embedding_distance',
+            'ShowProgressBar']
 
     exp_df = pd.DataFrame(columns=COLS)
     # build up a df of examples
@@ -712,8 +855,9 @@ if __name__ == "__main__":
         - SO vs. DO -- H0 is no difference btw groups
         """
         ## TODO: ensure no duplicate videos!!!!
+        # TODO bug city.
         fxns = [
-            get_random_row,
+            # get_random_row,
             get_closest_gesture_from_row_embeddings,
             get_shallow_ontology_gesture_match,
             get_deep_ontology_gesture_match
@@ -726,6 +870,8 @@ if __name__ == "__main__":
         B_rows = []
 
         for f1 in fxns:
+            print('=============================')
+            print(f1.__name__)
             # first the fxn vs. random
             r0, r1, r2 = get_transcript_gesture_match(clusters[k]['df'], df, f1, get_random_row)
             vids = [(r1, 0), (r2, 1)]     # we know r1 is the 'good' one
@@ -735,11 +881,13 @@ if __name__ == "__main__":
             T_rows.append(r0)
             A_rows.append(vids[0][0])
             B_rows.append(vids[1][0])
+            print('SHOULD APPEND: ', str(f1.__name__ + '_v_random'))
             video_relation.append(str(f1.__name__ + '_v_random'))
 
             for f2 in fxns:             # then the fxn vs. the other fxns
                 if f1.__name__ == f2.__name__:
                     continue
+                print(f2.__name__)
                 r3, r4, r5 = get_transcript_gesture_match(clusters[k]['df'], df, f1, f2)
                 vids = [(r4, 0), (r5, 1)]  # we know r4 is the 'good' one
                 random.shuffle(vids)
@@ -748,9 +896,14 @@ if __name__ == "__main__":
                 T_rows.append(r3)
                 A_rows.append(vids[0][0])
                 B_rows.append(vids[1][0])
+                print('SHOULD APPEND: ', str(f1.__name__ + '_v_' + f2.__name__))
                 video_relation.append(str(f1.__name__ + '_v_' + f2.__name__))
 
         # format it for the df
+        print('lens')
+        print(len(T_rows))
+        print(len(A_rows))
+        print(len(B_rows))
         videoA_fn = [r['video_fn'] for r in A_rows]
         videoB_fn = [r['video_fn'] for r in B_rows]
         transcripts = [r['PHRASE'] for r in T_rows]
@@ -768,9 +921,10 @@ if __name__ == "__main__":
         vidA_embedding_distances = [get_embedding_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
         vidB_embedding_distances = [get_embedding_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
 
-        randomise_trials = [random.randint(1, 9)]
-        display = ['video_participant_view'] * 12
-        category = [k] * 12
+        randomise_trials = [random.randint(1, len(A_rows))] * len(A_rows)
+        display = ['video_participant_view'] * len(A_rows)
+        show_progress = [1] * len(A_rows)
+        category = [k] * len(A_rows)
 
         COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn', 'videoB_fn',
                 'video_relation', 'category', 'predicted_video',
@@ -778,7 +932,8 @@ if __name__ == "__main__":
                 'vidA_shallow_ont', 'vidB_shallow_ont', 'vidA_deep_ont', 'vidB_deep_ont',
                 'transcript_shallow', 'transcript_deep', 'transcript_length',
                 'vidA_length', 'vidB_length',
-                'vidA_embedding_distance', 'vidB_embedding_distance']
+                'vidA_embedding_distance', 'vidB_embedding_distance',
+                'ShowProgressBar']
 
         ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, videoA_fn, videoB_fn,
                                     video_relation, category, predicted_video,
@@ -786,13 +941,14 @@ if __name__ == "__main__":
                                     vidA_shallow_ontology, vidB_shallow_ontology, vidA_deep_ontology, vidB_deep_ontology,
                                     transcript_shallow, transcript_deep, transcript_length,
                                     vidA_length, vidB_length,
-                                    vidA_embedding_distances, vidB_embedding_distances)),
+                                    vidA_embedding_distances, vidB_embedding_distances,
+                                    show_progress)),
                            columns=COLS)
+        print('appending df len: ', len(ndf))
         exp_df = exp_df.append(ndf)
 
     # create an experimental block?
     exp_df.sample(25)
-
 
     # save this shit!!!
     # print them if you want
