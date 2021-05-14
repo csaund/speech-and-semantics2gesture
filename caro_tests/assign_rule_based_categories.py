@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from scipy.spatial.distance import cdist, pdist
 import random
 from chord import Chord
+from shutil import copyfile
 
 
 SEMANTIC_CATEGORIES = {
@@ -39,13 +40,89 @@ SEMANTIC_CATEGORIES = {
 }
 
 
-def get_transcript_close_far_gesture_sets(clusters, k, df):
-    row = clusters[k]['df'].sample(1).iloc[0]
-    close_gesture, d = get_closest_gesture_from_row_sets(row, df)
+def get_random_row(df):
+    row = df.sample(1).iloc[0]
+    return row
+
+
+def get_transcript_embedding_v_random(clusters, k, df):
+    row = get_random_row(clusters[k]['df'])
+    embedding_gesture = get_closest_gesture_from_row_embeddings(row, df)
     samp = df.sample(100)
     samp = samp[samp['video_fn'] != row['video_fn']]
-    far_gesture = get_closest_timing_to_row(row, samp)  # control for timing
-    return row, close_gesture, d, far_gesture
+    random_gesture = get_closest_timing_to_row(row, samp)  # control for timing
+    return row, embedding_gesture, random_gesture
+
+
+def get_transcript_set_v_embedding(clusters, k, df):
+    row = get_random_row(clusters[k]['df'])
+    set_gesture, d = get_closest_gesture_from_row_sets(row, df)
+    embedding_gesture = get_closest_gesture_from_row_embeddings(row, df)
+    return row, set_gesture, embedding_gesture
+
+
+def get_closest_gesture_from_row_embeddings(row, df):
+    v = row['encoding']
+    tdf = df.copy()
+    tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
+    tdf = tdf.sort_values(by='comp_dists', ascending=True)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
+    gest = get_closest_timing_to_row(row, tdf[:10])
+    return gest
+
+
+def get_transcript_close_random_gesture_sets(clusters, k, df):
+    row = get_random_row(clusters[k]['df'])
+    # get close gesture
+    close_gesture, d = get_closest_gesture_from_row_sets(row, df)
+    # get random gesture
+    samp = df.sample(100)
+    samp = samp[samp['video_fn'] != row['video_fn']]
+    random_gesture = get_closest_timing_to_row(row, samp)  # control for timing
+    return row, close_gesture, random_gesture
+
+
+"""
+Given an experimental transcript T, the viewer distinguishes between two videos which would better
+match T. These videos are split into the following goups: 
+- random gesture vs. random (R) -- expect 50/50
+- close gesture based on transcript embedding (E) vs. random -- expect embedding preferred
+- close gesture based on shallow ontology groups (SO)  vs. random -- expect shallow preferred
+- close gesture based on deep ontology groups (DO) vs. random -- expect deep preferred
+- E vs. DO -- H0 is embedding preferred
+- E vs. SO -- H0 is embedding preferred
+- SO vs. DO -- H0 is no difference btw groups
+"""
+
+
+def get_transcript_gesture_match(cluster_df, full_df, matching_fxn1, matching_fxn2):
+    """
+    Given a sub-df to get a random gesture from, gets a random gesture
+    and two gestures from the full DF according to the matching functions passed.
+    For a description of potential matches see the above comment.
+    """
+    row = get_random_row(cluster_df)
+    t0 = matching_fxn1(row, full_df)
+    t1 = matching_fxn2(full_df)
+    return row, t0, t1
+
+
+# todo implement this
+def get_shallow_ontology_gesture_match(row, df):
+    """
+    Based on row, looks for closest match based on shallow ontology in df.
+    Gets top 10 matches and chooses the one that is the most similar in length.
+    """
+    return row
+
+
+# todo implement
+def get_deep_ontology_gesture_match(row, df):
+    """
+    Based on row, looks for closest match based on deep ontology in df.
+    Gets top 10 matches and chooses the one that is the most similar in length.
+    """
+    return row
 
 
 def get_set_categories(row):
@@ -519,6 +596,19 @@ def get_embedding_distances(r1, r2):
     return np.linalg.norm(v1[0] - v2[0])
 
 
+def write_fns_in_df_to_folder(df, host_dirname="combo_fillers", dirname="stimuli_fns"):
+    """
+    For convenience when working with all these files to upload only relevant stimuli
+    dirname is directory,
+    df contains video fns of videos to be moved to dirname.
+    """
+    src_fns = [os.path.join('speech-and-semantics2gesture', 'Splits', host_dirname, f) for f in list(df['video_fn']) if f != '']
+    dst_fns = [os.path.join('speech-and-semantics2gesture', dirname, f) for f in list(df['video_fn']) if f != '']
+    assert(len(src_fns) == len(dst_fns))
+    for src, dest in list(zip(src_fns, dst_fns)):
+        copyfile(src, dest)
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--file', '-f', default="",
@@ -583,9 +673,11 @@ if __name__ == "__main__":
     profile_df = get_cluster_profiles(clusters, df)
 
     COLS = ['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn',
-            'video_relation', 'cluster_distances', 'embedding_distances', 'category',
+            'video_relation', 'category', 'correct_video',
             'video1_transcript', 'video2_transcript', 'vidA_overlap', 'vidB_overlap',
-            'transcript_categories', 'transcript_length', 'vidA_length', 'vidB_length']
+            'transcript_categories', 'transcript_length', 'vidA_length', 'vidB_length',
+            'vidA_embedding_distance', 'vidB_embedding_distance',
+            'vidA_set_diff', 'vidB_set_diff']
 
     exp_df = pd.DataFrame(columns=COLS)
     # build up a df of examples
@@ -596,105 +688,99 @@ if __name__ == "__main__":
             print('NOT ENOUGH GESTURES FOR CLUSTER ', k)
             continue
 
-        r, nr, d_closest = get_random_closest_gestures_within_cluster(clusters, k)
-        print(r['PHRASE'], ' // ', nr['PHRASE'], '(%s)' % d_closest)
-        print(r['fn'], ' // ', nr['fn'])
+        ## TODO: ensure no duplicate videos!!!!
+        fxns = [
+            get_closest_gesture_from_row_embeddings,
+            get_shallow_ontology_gesture_match,
+            get_deep_ontology_gesture_match
+        ]
+        """
+        Given an experimental transcript T, the viewer distinguishes between two videos which would better
+        match T. These videos are split into the following goups: 
+        - random gesture vs. random (R) -- expect 50/50
+        - close gesture based on transcript embedding (E) vs. random -- expect embedding preferred
+        - close gesture based on shallow ontology groups (SO)  vs. random -- expect shallow preferred
+        - close gesture based on deep ontology groups (DO) vs. random -- expect deep preferred
+        - E vs. DO -- H0 is embedding preferred
+        - E vs. SO -- H0 is embedding preferred
+        - SO vs. DO -- H0 is no difference btw groups
+        """
+        predicted_gesture = []          # either 'A' or 'B'
+        video_relation = []
 
-        # get a transcript for a gesture, then a fn for a gesture that is
-        # very close and a gesture that is not in any overlapping clusters
-        r1, r2, d_close, r3 = get_transcript_close_and_far_gesture(clusters, k, df)
-        print('Phrase to match: %s' % r1['PHRASE'], "(%s)" % r1['fn'])
-        print('gesture options: ')
-        print(r2['fn'])
-        print(r3['fn'])
-        print('(nearest gesture is %s away)' % d_close)
+        T_rows = []
+        A_rows = []
+        B_rows = []
 
-        # get a transcript for a gesture, then a fn for a gesture that is
-        # in the same cluster and a gesture that is not in any overlapping clusters
-        r4, r5, d_random, r6 = get_transcript_random_and_far_gesture(clusters, k, df)
-        print('Phrase to match: %s' % r4['PHRASE'], "(%s)" % r4['fn'])
-        print('gesture options: ')
-        print(r2['fn'])
-        print(r3['fn'])
-        print('(nearest gesture is %s away)' % d_random)
+        for f1 in fxns:
+            # first the fxn vs. random
+            r0, r1, r2 = get_transcript_gesture_match(clusters[k]['df'], df, f1, get_random_row)
+            indexes = [0, 1]
+            order = [0, 1]
+            vids = [(r1, 0), (r2, 1)]     # we know r1 is the 'good' one
+            random.shuffle(vids)
+            predicted_i = 'B' if vids[0][1] else 'A'
+            predicted_gesture.append(predicted_i)
+            T_rows.append(r0)
+            A_rows.append(vids[0][0])
+            B_rows.append(vids[1][0])
+            video_relation.append(str(f1.__name__ + '_random'))
 
-        # get a transcript for a gesture, then a fn for a gesture that is
-        # close according to sentence embeddings, and one that is far according to sentence embeddings
-        r7, r8, d_emb_close, r9 = get_transcript_close_and_far_embedding(clusters, k, df)
-        print('Phrase to match: %s' % r7['PHRASE'], "(%s)" % r7['fn'])
-        print('gesture options: ')
-        print(r8['fn'])
-        print(r9['fn'])
-        print('(nearest gesture is %s away)' % d_emb_close)
-
-        # get a transcript for a gesture, then a fn for a gesture that is
-        # close according to sentence embeddings, and one that is random according to sentence embeddings
-        r10, r11, d_emb_random, r12 = get_transcript_random_and_far_embedding(clusters, k, df)
-        print('Phrase to match: %s' % r10['PHRASE'], "(%s)" % r10['fn'])
-        print('gesture options: ')
-        print(r11['fn'])
-        print(r12['fn'])
-        print('(nearest gesture is %s away)' % d_emb_random)
-
-        r13, r14, d_set, r15 = get_transcript_close_far_gesture_sets(clusters, k, df)
-        print('Phrase to match: %s' % r13['PHRASE'], "(%s)" % r13['fn'])
-        print('gesture options: ')
-        print(r14['fn'])
-        print(r15['fn'])
-        print('(nearest gesture is %s away)' % d_set)
-
-        # TODO update spreadsheet answer values
+            for f2 in fxns:             # then the fxn vs. the other fxns
+                if f1.__name__ == f2.__name__:
+                    continue
+                r3, r4, r5 = get_transcript_gesture_match(clusters[k]['df'], df, f1, f2)
+                indexes = [0, 1]
+                order = [0, 1]
+                vids = [(r4, 0), (r5, 1)]  # we know r4 is the 'good' one
+                random.shuffle(vids)
+                predicted_i = 'B' if vids[0][1] else 'A'
+                predicted_gesture.append(predicted_i)
+                T_rows.append(r3)
+                A_rows.append(vids[0][0])
+                B_rows.append(vids[1][0])
+                video_relation.append(str(f1.__name__ + '_' + f2.__name__))
 
         # format it for the df
-        #transcripts = [ex['PHRASE'] for ex in [r1, r4, r7, r10]]
-        #video1_fn = [ex['video_fn'] for ex in [r2, r5, r8, r11]]
-        #video1_transcript = [ex['PHRASE'] for ex in [r2, r5, r8, r11]]
-        #video2_fn = [ex['video_fn'] for ex in [r3, r6, r9, r12]]
-        #video2_transcript = [ex['PHRASE'] for ex in [r3, r6, r9, r12]]
-        #video_relation = ['close_same_cluster', 'random_same_cluster', 'close_far_embedding', 'close_random_embedding']
-        #cluster_distances = [d_close, d_random, None, None]
-        #embedding_distances = [get_embedding_distances(r2, r3), get_embedding_distances(r5, r6), d_emb_close, d_emb_random]
-        #category = [k] * 4
-        #display = ['video_matching'] * 4
-        #randomise_trials = [1, 2, 3, 4]
-        #random.shuffle(randomise_trials)
-        #ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, video1_fn, video2_fn, video_relation, cluster_distances, embedding_distances, category, video1_transcript, video2_transcript)),
-        #                   columns=['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn', 'video_relation', 'cluster_distances', 'embedding_distances', 'category', 'video1_transcript', 'video2_transcript'])
-        #exp_df = exp_df.append(ndf)
+        videoA_fn = [r['video_fn'] for r in A_rows]
+        videoB_fn = [r['video_fn'] for r in B_rows]
+        transcripts = [r['PHRASE'] for r in T_rows]
+        videoA_transcript = [r['PHRASE'] for r in A_rows]
+        videoB_transcript = [r['PHRASE'] for r in B_rows]
+        vidA_shallow_ontology = [r['shallow_ont'] for r in A_rows]
+        vidB_shallow_ontology = [r['shallow_ont'] for r in B_rows]
+        vidA_deep_ontology = [r['deep_ont'] for r in A_rows]
+        vidB_deep_ontology = [r['deep_ont'] for r in B_rows]
+        transcript_shallow = [r['shallow_ont'] for r in T_rows]
+        transcript_deep = [r['deep_ont'] for r in T_rows]
+        transcript_length = [r['time_length'] for r in T_rows]
+        vidA_length = [r['time_length'] for r in A_rows]
+        vidB_length = [r['time_length'] for r in B_rows]
+        vidA_embedding_distances = [get_embedding_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+        vidB_embedding_distances = [get_embedding_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
 
+        randomise_trials = [random.randint(1, 9)]
+        display = ['video_participant_view'] * 9
+        category = [k] * 9
 
-        transcripts = [r13['PHRASE']]
-        video1_fn = [r14['video_fn']]
-        video2_fn = [r15['video_fn']]
-        video1_transcript = [r14['PHRASE']]
-        video2_transcript = [r15['PHRASE']]
-        video_relation = ['set_vs_random']
-        cluster_distances = [d_set]
-        category = [k]
-        display = ['video_matching_set']
-        vidA_overlap = [get_set_overlap(r13, r14)]
-        vidB_overlap = [get_set_overlap(r13, r15)]
-        transcript_categories = [get_set_categories(r13)]
-        transcript_length = [r13['time_length']]
-        vidA_length = [r14['time_length']]
-        vidB_length = [r15['time_length']]
-        randomise_trials = [1]
-        # embedding_distances = []
         """
             COLS = ['randomise_trials', 'display', 'transcripts', 'video1_fn', 'video2_fn',
-            'video_relation', 'cluster_distances', 'embedding_distances', 'category',
-            'video1_transcript', 'video2_transcript', 'vidA_overlap', 'vidB_overlap',
-            'transcript_categories', 'transcript_length', 'vidA_length', 'vidB_length']
+                    'video_relation', 'category', 'correct_video',
+                    'video1_transcript', 'video2_transcript', 'vidA_overlap', 'vidB_overlap',
+                    'transcript_categories', 'transcript_length', 'vidA_length', 'vidB_length',
+                    'vidA_embedding_distance', 'vidB_embedding_distance']
         """
         ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, video1_fn, video2_fn,
-                                    video_relation, cluster_distances, embedding_distances, category,
+                                    video_relation, category, correct_gesture,
                                     video1_transcript, video2_transcript, vidA_overlap, vidB_overlap,
-                                    transcript_categories, transcript_length, vidA_length, vidB_length)),
+                                    transcript_categories, transcript_length, vidA_length, vidB_length,
+                                    vidA_embedding_distances, vidB_embedding_distances,
+                                    vidA_set_diff, vidB_set_diff)),
                            columns=COLS)
         exp_df = exp_df.append(ndf)
 
     # create an experimental block?
-    # exp_df.sample(25)
+    exp_df.sample(25)
 
 
     # save this shit!!!
