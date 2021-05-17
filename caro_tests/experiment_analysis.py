@@ -3,6 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import re
 import numpy as np
+import scipy
 
 
 def get_correct(row):
@@ -22,6 +23,20 @@ def get_correct_embedding_distance(row):
 
 def get_incorrect_embedding_distance(row):
     return row['vidA_embedding_distance'] if row['predicted_video'] == 'B' else row['vidB_embedding_distance']
+
+
+def plot_embedded_vs_semantic_distances(exp_df):
+    embedding_dists = list(exp_df['vidA_embedding_distance']) + list(exp_df['vidB_embedding_distance'])
+    ontology_dists = np.array(list(exp_df['A_ontology_match']) + list(exp_df['B_ontology_match'])) * 10
+    fig, ax = plt.subplots(1, 1)
+    ax.scatter(embedding_dists, ontology_dists)
+    ax.set_title('Embedding vs. Ontology distances')
+    ax.set_xlabel('Embedding Distance (G and transcript)')
+    ax.set_ylabel('Ontology Distance (G and transcript)')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(embedding_dists, ontology_dists)
+    print(r_value ** 2)
+    print(p_value)
+    fig.show()
 
 
 if __name__ == "__main__":
