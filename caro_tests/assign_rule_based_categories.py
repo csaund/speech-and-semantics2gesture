@@ -12,6 +12,7 @@ from tqdm import tqdm
 import string
 tqdm.pandas()
 
+
 SEMANTIC_CATEGORIES = {
     'FEELINGS': ['angry', 'sad', 'happy', 'love', 'passion', 'anxious', 'stress', 'worry', 'worried', 'anger.', 'anger'],
     'REFLEXIVE': [' me', ' my', 'I'],
@@ -43,10 +44,13 @@ SEMANTIC_CATEGORIES = {
 }
 
 
-def get_random_row(df, row=None):
+def get_random_row(df, row=None, exclude=[]):
     if row is not None:
         samp = df.sample(25)
         samp = samp[samp['video_fn'] != row['video_fn']]
+        if exclude:
+            exclude_fns = [r['video_fn'] for r in exclude]
+            samp = samp[~samp['video_fn'].isin(exclude_fns)]
         r = get_closest_timing_to_row(row, samp)
         return r
     return df.sample(1).iloc[0]
@@ -68,12 +72,15 @@ def get_transcript_set_v_embedding(clusters, k, df):
     return row, set_gesture, embedding_gesture
 
 
-def get_closest_gesture_from_row_embeddings(df, row):
+def get_closest_gesture_from_row_embeddings(df, row, exclude=[]):
     v = row['encoding']
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
     tdf = tdf.sort_values(by='comp_dists', ascending=True)
     tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
     gest = get_closest_timing_to_row(row, tdf[:10])
     return gest
 
@@ -130,6 +137,9 @@ def get_total_ontologies(row):
 def get_ontology_distances(r1, r2):
     sim = calculate_set_sequence_similarity(r1['ont_sequence'], r2['ont_sequence'])
     tot = min(get_total_ontologies(r1), get_total_ontologies(r2))
+    if tot == 0:
+        print('0 ont sequence for either ', r1['video_fn'], ' or ', r2['video_fn'])
+        return 0
     return float(sim / tot)
 
 
@@ -141,26 +151,36 @@ def get_transcript_gesture_match(cluster_df, full_df, matching_fxn1, matching_fx
     """
     row = get_random_row(cluster_df)
     t0 = matching_fxn1(full_df, row)
-    t1 = matching_fxn2(full_df, row)
+    t1 = matching_fxn2(full_df, row, exclude=[row, t0])
+    if(t0['video_fn'] == t1['video_fn']):
+        print('got the same video fn with functions')
+        print(matching_fxn1.__name__)
+        print(matching_fxn2.__name__)
     return row, t0, t1
 
 
-def get_ontology_sequence_match(df, row):
+def get_ontology_sequence_match(df, row, exclude=[]):
     transcript_ont = row['ont_sequence']
     tdf = df.copy()
-    tdf['sequence_val'] = tdf.apply(lambda r: calculate_set_sequence_similarity(transcript_ont, r['ont_sequence']), axis=1)
+    tdf['sequence_val'] = tdf.apply(lambda r: get_ontology_distances(row, r), axis=1)
     tdf = tdf.sort_values('sequence_val', ascending=False)
     tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
     r = get_closest_timing_to_row(row, tdf[:10])
     return r
 
 
-def get_extont_sequence_match(df, row):
+def get_extont_sequence_match(df, row, exclude=[]):
     transcript_ont = row['extont_sequence']
     tdf = df.copy()
-    tdf['sequence_val'] = tdf.apply(lambda r: calculate_set_sequence_similarity(transcript_ont, r['extont_sequence']), axis=1)
+    tdf['sequence_val'] = tdf.apply(lambda r: get_ontology_distances(row, r), axis=1)
     tdf = tdf.sort_values('sequence_val', ascending=False)
     tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
     r = get_closest_timing_to_row(row, tdf[:10])
     return r
 
@@ -218,6 +238,8 @@ def get_ontology_sequence(row, cere):
         if w in feat_set.keys():
             if 'Ont' in feat_set[w].keys():
                 ont_sequence.append(feat_set[w]['Ont'][1])
+            elif 'ExtOnt' in feat_set[w].keys():        # if there's no ontology, use the extont.
+                ont_sequence.append(feat_set[w]['ExtOnt'][1])
     return ont_sequence
 
 
@@ -747,8 +769,9 @@ def write_fns_in_df_to_folder(df, host_dirname="combo_fillers", dirname="stimuli
     dirname is directory,
     df contains video fns of videos to be moved to dirname.
     """
-    src_fns = [os.path.join('speech-and-semantics2gesture', 'Splits', host_dirname, f) for f in list(df['video_fn']) if f != '']
-    dst_fns = [os.path.join('speech-and-semantics2gesture', dirname, f) for f in list(df['video_fn']) if f != '']
+    hostdir = os.path.join('speech-and-semantics2gesture', 'Splits', host_dirname)
+    src_fns = [os.path.join(hostdir, f) for f in os.listdir(hostdir) if (f.endswith('mp4') and 'sound' not in f)]
+    dst_fns = [os.path.join(hostdir, dirname, f) for f in os.listdir(hostdir) if (f.endswith('mp4') and 'sound' not in f)]
     assert(len(src_fns) == len(dst_fns))
     for src, dest in list(zip(src_fns, dst_fns)):
         copyfile(src, dest)
@@ -763,6 +786,188 @@ def initialize_ontologies(df):
         cere.generate(p, debprint=False)
     return cere
 
+
+def insert_same_video(index, df):
+    df.at[index, 'videoA_fn'] = df.iloc[index]['videoB_fn']
+    df.at[index, 'video_relation'] = 'CONTROL_SAME_VIDEO'
+    return df
+
+
+def insert_missing_video(index, df):
+    df.at[index, 'videoA_fn'] = 'broken_link.mp4'
+    df.at[index, 'video_relation'] = 'CONTROL_BROKEN_VIDEO'
+    return df
+
+
+# add n rows to beginning for intro
+def buffer_intro_rows(df, n=1):
+    fn1 = 'NaturalTalking_015_split_219_frame_27995_28139.mp4'
+    fn2 = 'NaturalTalking_015_split_64_frame_7409_7553.mp4'
+    t = 'that is the last thing that I wanted'
+    data = {
+        'videoA_fn': [fn1] * n,
+        'videoB_fn': [fn2] * n,
+        'transcripts': [t] * n,
+        'predicted_video': ['broken_link.mp4'] * n,
+        'display': ['Intro'] * n
+    }
+    ndf = pd.DataFrame(data)
+    return pd.concat([ndf, df]).reset_index(drop=False)
+
+
+def buffer_debrief_rows(df, n=1):
+    data = {
+        'display': ['debrief'] * n
+    }
+    ndf = pd.DataFrame(data)
+    return pd.concat([df, ndf])
+
+
+# gets a df of 10 that has one from each category
+def get_representative_df(data_df):
+    COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn', 'videoB_fn',
+            'video_relation', 'category', 'predicted_video',
+            'videoA_transcript', 'videoB_transcript',
+            # 'vidA_shallow_ont', 'vidB_shallow_ont', 'vidA_deep_ont', 'vidB_deep_ont',
+            # 'transcript_shallow', 'transcript_deep',
+            'transcript_length',
+            'vidA_length', 'vidB_length',
+            'vidA_embedding_distance', 'vidB_embedding_distance',
+            'ShowProgressBar', 'A_function', 'B_function',
+            'A_ontology_match', 'B_ontology_match']
+    # build up a df of examples
+
+    """
+    Given an experimental transcript T, the viewer distinguishes between two videos which would better
+    match T. These videos are split into the following goups: 
+    - random gesture vs. random (R) -- expect 50/50
+    - close gesture based on transcript embedding (E) vs. random -- expect embedding preferred
+    - close gesture based on shallow ontology groups (SO)  vs. random -- expect shallow preferred
+    - close gesture based on deep ontology groups (DO) vs. random -- expect deep preferred
+    - E vs. DO -- H0 is no difference btw groups
+    - E vs. SO -- H0 is no difference btw groups
+    - SO vs. DO -- H0 is no difference btw groups
+    """
+    fxns = [
+        get_closest_gesture_from_row_embeddings,
+        get_ontology_sequence_match,
+        get_extont_sequence_match
+    ]
+    predicted_video = []  # either 'A' or 'B'
+    video_relation = []
+
+    T_rows = []
+    A_rows = []
+    B_rows = []
+    a_fxns = []
+    b_fxns = []
+
+    # add actual v random once per round
+    r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, get_random_row, get_random_row)
+    vids = [(r0, 0), (r2, 1)]  # we predict r0 in this case
+    random.shuffle(vids)
+    predicted_i = 'A' if vids[0][1] == 0 else 'B'
+    predicted_video.append(predicted_i)
+    a_fxns.append(['original_gesture' if predicted_i == 'A' else 'random'])
+    b_fxns.append(['original_gesture' if predicted_i == 'B' else 'random'])
+    T_rows.append(r0)
+    A_rows.append(vids[0][0])
+    B_rows.append(vids[1][0])
+    video_relation.append('original_gesture_v_random')
+
+    for i in range(len(fxns)):
+        f1 = fxns[i]
+        # first the fxn vs. random
+        r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+        vids = [(r1, 0), (r2, 1)]  # we know r1 is the 'good' one
+        random.shuffle(vids)
+        predicted_i = 'A' if vids[0][1] == 0 else 'B'
+        predicted_video.append(predicted_i)
+        a_fxns.append([f1.__name__ if predicted_i == 'A' else 'get_random_row'])
+        b_fxns.append([f1.__name__ if predicted_i == 'B' else 'get_random_row'])
+        T_rows.append(r0)
+        A_rows.append(vids[0][0])
+        B_rows.append(vids[1][0])
+        video_relation.append(str(f1.__name__ + '_v_random'))
+
+        # and a few with the actual gesture there
+        r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+        vids = [(r0, 0), (r1, 1)]  # we predict r0 in this case
+        random.shuffle(vids)
+        predicted_i = 'A' if vids[0][1] == 0 else 'B'
+        predicted_video.append(predicted_i)
+        a_fxns.append(['original_gesture' if predicted_i == 'A' else f1.__name__])
+        b_fxns.append(['original_gesture' if predicted_i == 'B' else f1.__name__])
+        T_rows.append(r0)
+        A_rows.append(vids[0][0])
+        B_rows.append(vids[1][0])
+        video_relation.append(str(f1.__name__ + '_v_original_gesture'))
+
+        for j in range(i + 1, len(fxns)):
+            f2 = fxns[j]  # then the fxn vs. the other fxns
+            if f1.__name__ == f2.__name__:
+                continue
+            r3, r4, r5 = get_transcript_gesture_match(data_df, data_df, f1, f2)
+            vids = [(r4, 0), (r5, 1)]  # r4 is our 'predicted' one by default
+            random.shuffle(vids)
+            predicted_i = 'A' if vids[0][1] == 0 else 'B'
+            a_fxns.append([f1.__name__ if predicted_i == 'A' else f2.__name__])
+            b_fxns.append([f1.__name__ if predicted_i == 'B' else f2.__name__])
+            predicted_video.append(predicted_i)
+            T_rows.append(r3)
+            A_rows.append(vids[0][0])
+            B_rows.append(vids[1][0])
+            video_relation.append(str(f1.__name__ + '_v_' + f2.__name__))
+
+        # format it for the df
+    videoA_fn = [r['video_fn'] for r in A_rows]
+    videoB_fn = [r['video_fn'] for r in B_rows]
+    transcripts = [r['PHRASE'] for r in T_rows]
+    videoA_transcript = [r['PHRASE'] for r in A_rows]
+    videoB_transcript = [r['PHRASE'] for r in B_rows]
+    transcript_length = [r['time_length'] for r in T_rows]
+    vidA_length = [r['time_length'] for r in A_rows]
+    vidB_length = [r['time_length'] for r in B_rows]
+    vidA_embedding_distances = [get_embedding_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+    vidB_embedding_distances = [get_embedding_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
+    vidA_ontology_match = [get_ontology_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+    vidB_ontology_match = [get_ontology_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
+
+    randomise_trials = [random.randint(1, len(A_rows))] * len(A_rows)
+    display = ['video_participant_view'] * len(A_rows)
+    show_progress = [1] * len(A_rows)
+    category = [None] * len(A_rows)
+
+    exp_df = pd.DataFrame(list(zip(randomise_trials, display, transcripts, videoA_fn, videoB_fn,
+                                   video_relation, category, predicted_video,
+                                   videoA_transcript, videoB_transcript,
+                                   # vidA_shallow_ontology, vidB_shallow_ontology, vidA_deep_ontology, vidB_deep_ontology,
+                                   # transcript_shallow, transcript_deep,
+                                   transcript_length,
+                                   vidA_length, vidB_length,
+                                   vidA_embedding_distances, vidB_embedding_distances,
+                                   show_progress, a_fxns, b_fxns,
+                                   vidA_ontology_match, vidB_ontology_match)),
+                          columns=COLS)
+    return exp_df
+
+
+def get_experimental_df(data_df):
+    df1 = get_representative_df(data_df)
+    df2 = get_representative_df(data_df)
+    df3 = get_representative_df(data_df)
+    exp_df = pd.concat([df1, df2, df3])
+    experimental_df = exp_df.sample(frac=1).reset_index()
+    # insert missing video link at 13
+    experimental_df = insert_missing_video(13, experimental_df)
+    # insert same video at 3
+    experimental_df = insert_same_video(3, experimental_df)
+    # insert same video at 22
+    experimental_df = insert_same_video(23, experimental_df)
+
+    experimental_df = buffer_intro_rows(experimental_df, n=1)
+    experimental_df = buffer_debrief_rows(experimental_df, n=1)
+    return experimental_df
 
 
 if __name__ == "__main__":
@@ -808,11 +1013,9 @@ if __name__ == "__main__":
         df = df.fillna('-')
 
     cere = CII()
-    # TODO get the Shallow and Deep ontologies here
     df['shallow_ont'] = df.progress_apply(lambda row: get_shallow_ontology(row, cere), axis=1)
     df['deep_ont'] = df.apply(lambda row: get_deep_ontology(row, cere), axis=1)
     df['hypernyms'] = df.apply(lambda row: get_hypernyms(row, cere), axis=1)
-
 
     df['ont_sequence'] = df.progress_apply(lambda row: get_ontology_sequence(row, cere), axis=1)
     df['extont_sequence'] = df.progress_apply(lambda row: get_extont_sequence(row, cere), axis=1)
@@ -837,136 +1040,11 @@ if __name__ == "__main__":
     # get some stats
     profile_df = get_cluster_profiles(clusters, df)
 
-    COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn', 'videoB_fn',
-            'video_relation', 'category', 'predicted_video',
-            'videoA_transcript', 'videoB_transcript',
-            'vidA_shallow_ont', 'vidB_shallow_ont', 'vidA_deep_ont', 'vidB_deep_ont',
-            'transcript_shallow', 'transcript_deep', 'transcript_length',
-            'vidA_length', 'vidB_length',
-            'vidA_embedding_distance', 'vidB_embedding_distance',
-            'ShowProgressBar', 'A_function', 'B_function',
-            'A_ontology_match', 'B_ontology_match']
-
-    exp_df = pd.DataFrame(columns=COLS)
     # build up a df of examples
-    num_samples = 10
-
-    for i in range(num_samples):
-        print("WORKING ON SAMPLE ", i)
-        # get some random closest gestures within a given cluster
-
-        """
-        Given an experimental transcript T, the viewer distinguishes between two videos which would better
-        match T. These videos are split into the following goups: 
-        - random gesture vs. random (R) -- expect 50/50
-        - close gesture based on transcript embedding (E) vs. random -- expect embedding preferred
-        - close gesture based on shallow ontology groups (SO)  vs. random -- expect shallow preferred
-        - close gesture based on deep ontology groups (DO) vs. random -- expect deep preferred
-        - E vs. DO -- H0 is no difference btw groups
-        - E vs. SO -- H0 is no difference btw groups
-        - SO vs. DO -- H0 is no difference btw groups
-        """
-        ## TODO: ensure no duplicate videos!!!!
-        # TODO bug city.
-        fxns = [
-            get_closest_gesture_from_row_embeddings,
-            get_ontology_sequence_match,
-            get_extont_sequence_match
-        ]
-        predicted_video = []          # either 'A' or 'B'
-        video_relation = []
-
-        T_rows = []
-        A_rows = []
-        B_rows = []
-        a_fxns = []
-        b_fxns = []
-
-        for f1 in fxns:
-            # first the fxn vs. random
-            r0, r1, r2 = get_transcript_gesture_match(df, df, f1, get_random_row)
-            vids = [(r1, 0), (r2, 1)]     # we know r1 is the 'good' one
-            random.shuffle(vids)
-            predicted_i = 'A' if vids[0][1] == 0 else 'B'
-            predicted_video.append(predicted_i)
-            a_fxns.append([f1.__name__ if predicted_i == 'A' else 'get_random_row'])
-            b_fxns.append([f1.__name__ if predicted_i == 'B' else 'get_random_row'])
-            T_rows.append(r0)
-            A_rows.append(vids[0][0])
-            B_rows.append(vids[1][0])
-            video_relation.append(str(f1.__name__ + '_v_random'))
-
-            for f2 in fxns:             # then the fxn vs. the other fxns
-                if f1.__name__ == f2.__name__:
-                    continue
-                r3, r4, r5 = get_transcript_gesture_match(df, df, f1, f2)
-                vids = [(r4, 0), (r5, 1)]  # r4 is our 'predicted' one by default
-                random.shuffle(vids)
-                predicted_i = 'A' if vids[0][1] == 0 else 'B'
-                a_fxns.append([f1.__name__ if predicted_i == 'A' else f2.__name__])
-                b_fxns.append([f1.__name__ if predicted_i == 'B' else f2.__name__])
-                predicted_video.append(predicted_i)
-                T_rows.append(r3)
-                A_rows.append(vids[0][0])
-                B_rows.append(vids[1][0])
-                video_relation.append(str(f1.__name__ + '_v_' + f2.__name__))
-
-        # format it for the df
-        print('lens')
-        print(len(T_rows))
-        print(len(A_rows))
-        print(len(B_rows))
-        videoA_fn = [r['video_fn'] for r in A_rows]
-        videoB_fn = [r['video_fn'] for r in B_rows]
-        transcripts = [r['PHRASE'] for r in T_rows]
-        videoA_transcript = [r['PHRASE'] for r in A_rows]
-        videoB_transcript = [r['PHRASE'] for r in B_rows]
-        vidA_shallow_ontology = [r['ont_sequence'] for r in A_rows]
-        vidB_shallow_ontology = [r['ont_sequence'] for r in B_rows]
-        vidA_deep_ontology = [r['extont_sequence'] for r in A_rows]
-        vidB_deep_ontology = [r['extont_sequence'] for r in B_rows]
-        transcript_shallow = [r['ont_sequence'] for r in T_rows]
-        transcript_deep = [r['extont_sequence'] for r in T_rows]
-        transcript_length = [r['time_length'] for r in T_rows]
-        vidA_length = [r['time_length'] for r in A_rows]
-        vidB_length = [r['time_length'] for r in B_rows]
-        vidA_embedding_distances = [get_embedding_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
-        vidB_embedding_distances = [get_embedding_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
-        vidA_ontology_match = [get_ontology_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
-        vidB_ontology_match = [get_ontology_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
-
-        randomise_trials = [random.randint(1, len(A_rows))] * len(A_rows)
-        display = ['video_matching_set'] * len(A_rows)
-        show_progress = [1] * len(A_rows)
-        category = [None] * len(A_rows)
-
-        """
-        COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn', 'videoB_fn',
-                'video_relation', 'category', 'predicted_video',
-                'videoA_transcript', 'videoB_transcript',
-                'vidA_shallow_ont', 'vidB_shallow_ont', 'vidA_deep_ont', 'vidB_deep_ont',
-                'transcript_shallow', 'transcript_deep', 'transcript_length',
-                'vidA_length', 'vidB_length',
-                'vidA_embedding_distance', 'vidB_embedding_distance',
-                'ShowProgressBar', 'A_function', 'B_function',
-                'A_ontology_match', 'B_ontology_match']
-        """
-
-        ndf = pd.DataFrame(list(zip(randomise_trials, display, transcripts, videoA_fn, videoB_fn,
-                                    video_relation, category, predicted_video,
-                                    videoA_transcript, videoB_transcript,
-                                    vidA_shallow_ontology, vidB_shallow_ontology, vidA_deep_ontology, vidB_deep_ontology,
-                                    transcript_shallow, transcript_deep, transcript_length,
-                                    vidA_length, vidB_length,
-                                    vidA_embedding_distances, vidB_embedding_distances,
-                                    show_progress, a_fxns, b_fxns,
-                                    vidA_ontology_match, vidB_ontology_match)),
-                           columns=COLS)
-        print('appending df len: ', len(ndf))
-        exp_df = exp_df.append(ndf)
-
-    # create an experimental block?
-    exp_df.sample(25)
+    num_samples = 20
+    for i in tqdm(range(num_samples)):
+        ex_df = get_experimental_df(df)
+        ex_df.to_csv(f'full_test{i}.csv')
 
     # save this shit!!!
     # print them if you want

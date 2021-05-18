@@ -5,6 +5,79 @@ import re
 import numpy as np
 import scipy
 
+"""
+map these names to our actual experimental groups:
+actual_random
+actual_embedded
+actual_shallow
+actual_deep
+random_embedded
+random_shallow
+random_deep
+embedded_shallow
+embedded_deep
+shallow_deep
+"""
+category_mapper = {
+    'get_extont_sequence_match_v_original_gesture': 'actual_deep',
+    'get_ontology_sequence_match_v_get_closest_gesture_from_row_embeddings': 'embedded_shallow',
+    'CONTROL_SAME_VIDEO': 'control',
+    'get_closest_gesture_from_row_embeddings_v_original_gesture': 'actual_embedded',
+    'get_extont_sequence_match_v_get_ontology_sequence_match': 'shallow_deep',
+    'get_extont_sequence_match_v_get_closest_gesture_from_row_embeddings': 'embedded_deep',
+    'get_ontology_sequence_match_v_original_gesture': 'actual_shallow',
+    'get_closest_gesture_from_row_embeddings_v_get_extont_sequence_match': 'embedded_deep',
+    'get_closest_gesture_from_row_embeddings_v_get_ontology_sequence_match': 'embedded_shallow',
+    'CONTROL_BROKEN_VIDEO': 'control',
+    'get_extont_sequence_match_v_random': 'random_deep',
+    'get_ontology_sequence_match_v_get_extont_sequence_match': 'shallow_deep',
+    'get_closest_gesture_from_row_embeddings_v_random': 'random_embedded',
+    'get_ontology_sequence_match_v_random': 'random_shallow',
+    'original_gesture_v_random': 'actual_random'
+}
+
+
+def print_analysis_categories(df):
+    df = df.dropna(subset=['video_relation'])
+    df['analysis_group'] = df.apply(lambda row: category_mapper[row['video_relation']] if row['video_relation'] != np.nan else None, axis=1)
+    ##
+    actual_random = len(df[df['analysis_group'] == 'actual_random'])
+    actual_embedded = len(df[df['analysis_group'] == 'actual_embedded'])
+    actual_shallow = len(df[df['analysis_group'] == 'actual_shallow'])
+    actual_deep = len(df[df['analysis_group'] == 'actual_deep'])
+    random_embedded = len(df[df['analysis_group'] == 'random_embedded'])
+    random_shallow = len(df[df['analysis_group'] == 'random_shallow'])
+    random_deep = len(df[df['analysis_group'] == 'random_deep'])
+    embedded_shallow = len(df[df['analysis_group'] == 'embedded_shallow'])
+    embedded_deep = len(df[df['analysis_group'] == 'embedded_deep'])
+    shallow_deep = len(df[df['analysis_group'] == 'shallow_deep'])
+    print('actual_random:', actual_random)
+    print('actual_embedded:', actual_embedded)
+    print('actual_shallow:', actual_shallow)
+    print('actual_deep:', actual_deep)
+    print('random_embedded:', random_embedded)
+    print('random_shallow:', random_shallow)
+    print('random_deep:', random_deep)
+    print('embedded_shallow:', embedded_shallow)
+    print('embedded_deep:', embedded_deep)
+    print('shallow_deep:', shallow_deep)
+
+
+def get_num_each_category(dfs=None, n=10):
+    if not dfs:
+        fns = [f'full_test{i}.csv' for i in range(n)]
+        dfs = [pd.read_csv(fn) for fn in fns]
+    df = pd.concat(dfs)
+    print_analysis_categories(df)
+    return df
+
+
+def get_num_repeats(df):
+    tdf = df.copy()
+    tdf = tdf[tdf['videoA_fn'] == tdf['videoB_fn']]
+    tdf = tdf[~tdf['video_relation'].isin(['CONTROL_SAME_VIDEO'])]
+    return len(tdf)
+
 
 def get_correct(row):
     if row['Response'] == 'Video A' and row['predicted_video'] == 'A':
@@ -18,8 +91,10 @@ def get_correct(row):
     return np.nan
 
 
+# TODO what the fuck am I doing here, it should be chosen vs. not chosen, duh.
 def get_correct_embedding_distance(row):
     return row['vidA_embedding_distance'] if row['predicted_video'] == 'A' else row['vidB_embedding_distance']
+
 
 def get_incorrect_embedding_distance(row):
     return row['vidA_embedding_distance'] if row['predicted_video'] == 'B' else row['vidB_embedding_distance']
