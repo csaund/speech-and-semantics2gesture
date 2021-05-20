@@ -143,7 +143,7 @@ from nltk.corpus import wordnet as wn
 
 import spacy
 
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_lg")
 
 from pytrips.helpers import helpers as hlp
 
@@ -175,7 +175,7 @@ class CII:
 
     def __init__(self):
         """ Initialization """
-        nlp = spacy.load("en_core_web_sm")
+        nlp = spacy.load("en_core_web_lg")
 
         hyper = lambda s: s.hypernyms()
         hypo = lambda s: s.hyponyms()

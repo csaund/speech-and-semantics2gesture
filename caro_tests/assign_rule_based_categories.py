@@ -7,11 +7,22 @@ from scipy.spatial.distance import cdist, pdist
 import random
 from chord import Chord
 from shutil import copyfile
-from caro_tests.ontology_generator import CII
+# from caro_tests.ontology_generator import CII
 from tqdm import tqdm
 import string
 tqdm.pandas()
+import spacy
 
+import tensorflow as tf
+import tensorflow_hub as hub
+
+embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
+nlp = spacy.load("en_core_web_lg")
+
+
+# TODO CAROLYN
+# TODO (1) FIX EXTONT BUG (only use in extont if EXTRA info, not if category is in ontology)
+# TODO (2) different matching strategies for ont and extont (POS matching??)
 
 SEMANTIC_CATEGORIES = {
     'FEELINGS': ['angry', 'sad', 'happy', 'love', 'passion', 'anxious', 'stress', 'worry', 'worried', 'anger.', 'anger'],
@@ -56,23 +67,10 @@ def get_random_row(df, row=None, exclude=[]):
     return df.sample(1).iloc[0]
 
 
-def get_transcript_embedding_v_random(clusters, k, df):
-    row = get_random_row(clusters[k]['df'])
-    embedding_gesture = get_closest_gesture_from_row_embeddings(row, df)
-    samp = df.sample(100)
-    samp = samp[samp['video_fn'] != row['video_fn']]
-    random_gesture = get_closest_timing_to_row(row, samp)  # control for timing
-    return row, embedding_gesture, random_gesture
-
-
-def get_transcript_set_v_embedding(clusters, k, df):
-    row = get_random_row(clusters[k]['df'])
-    set_gesture, d = get_closest_gesture_from_row_sets(row, df)
-    embedding_gesture = get_closest_gesture_from_row_embeddings(row, df)
-    return row, set_gesture, embedding_gesture
-
-
-def get_closest_gesture_from_row_embeddings(df, row, exclude=[]):
+def get_closest_gesture_from_row_embeddings(df, row=None, exclude=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+        # print(row['PHRASE'])
     v = row['encoding']
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
@@ -82,18 +80,101 @@ def get_closest_gesture_from_row_embeddings(df, row, exclude=[]):
         exclude_fns = [r['video_fn'] for r in exclude]
         tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
     gest = get_closest_timing_to_row(row, tdf[:10])
+    # print(gest['PHRASE'])
     return gest
 
 
-def get_transcript_close_random_gesture_sets(clusters, k, df):
-    row = get_random_row(clusters[k]['df'])
-    # get close gesture
-    close_gesture, d = get_closest_gesture_from_row_sets(row, df)
-    # get random gesture
-    samp = df.sample(100)
-    samp = samp[samp['video_fn'] != row['video_fn']]
-    random_gesture = get_closest_timing_to_row(row, samp)  # control for timing
-    return row, close_gesture, random_gesture
+def get_hypernym_set_overlaps(r1, r2):
+
+
+
+def get_hypernym_set_match(df, row, exclude=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+    tdf = df.copy()
+    tdf['set_overlaps'] = tdf.apply(lambda r: get_num_ontology_overlaps(row, r), axis=1)
+    tdf = tdf.sort_values(by='set_overlaps', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
+    gest = get_closest_timing_to_row(row, tdf[:10])
+    # print(gest['PHRASE'])
+    return gest
+
+
+def get_num_ontology_overlaps(r1, r2):
+    ont1 = set()
+    ont2 = set()
+    for o in r1['ont_sequence']:
+        ont1 = ont1.union(o)
+    for o in r2['ont_sequence']:
+        ont2 = ont2.union(o)
+
+    intersect = len(ont1.intersection(ont2))
+    o1_diff = len(ont1 - ont2)
+    o2_diff = len(ont2 - ont1)
+    return intersect - o1_diff - o2_diff
+
+
+# don't bother with sequence matching, just match up the categories that
+# appear in each one
+def get_ontology_set_match(df, row, exclude=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+    tdf = df.copy()
+    tdf['set_overlaps'] = tdf.apply(lambda r: get_num_ontology_overlaps(row, r), axis=1)
+    tdf = tdf.sort_values(by='set_overlaps', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
+    gest = get_closest_timing_to_row(row, tdf[:10])
+    # print(gest['PHRASE'])
+    return gest
+
+
+def get_farthest_match_embedding(df, row, exclude=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+        # print(row['PHRASE'])
+    v = row['encoding']
+    tdf = df.copy()
+    tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
+    tdf = tdf.sort_values(by='comp_dists', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
+    gest = get_closest_timing_to_row(row, tdf[:10])
+    # print(gest['PHRASE'])
+    return gest
+
+
+def get_least_similar_sentence_USE(df, row, exclude=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+        # print(row['PHRASE'])
+    tdf = df.copy()
+    tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['use_embedding'] - row['use_embedding']), axis=1)
+    tdf = tdf.sort_values(by='comp_dists', ascending=False)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
+    close_row = get_closest_timing_to_row(row, tdf[:10])
+    # print(close_row['PHRASE'])
+    return close_row
+
+
+def check_use_vs_bert(df):
+    row = df.sample(1).iloc[0]
+    print("PHRASE TO MATCH: \n", row['PHRASE'])
+    r1 = get_closest_gesture_from_row_embeddings(df, row)
+    r2 = get_most_similar_sentence_USE(df, row)
+    print("==============================")
+    print('embedding match: \n', r1['PHRASE'])
+    print('use match: \n', r2['PHRASE'])
 
 
 """
@@ -107,8 +188,6 @@ match T. These videos are split into the following goups:
 - E vs. SO -- H0 is embedding preferred
 - SO vs. DO -- H0 is no difference btw groups
 """
-
-
 def get_overlap_sim_starting_at_ij(S1, S2, i, j):
     tot = 0
     while i != len(S1) and j != len(S2):
@@ -228,9 +307,10 @@ def get_set_overlap(r1, r2):
     return int, diff
 
 
-def get_ontology_sequence(row, cere):
+def get_ontology_sequence(row, cere, feat_set=None):
     p = row['PHRASE']
-    feat_set = cere.generate(p)
+    if not feat_set:
+        feat_set = cere.generate(p)
     words = p.rstrip().split(' ')
     words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
     ont_sequence = []
@@ -243,18 +323,40 @@ def get_ontology_sequence(row, cere):
     return ont_sequence
 
 
-def get_extont_sequence(row, cere):
+
+# extra ont
+def get_extont_sequence(row, cere, feat_set=None):
     p = row['PHRASE']
-    feat_set = cere.generate(p)
+    if not feat_set:
+        feat_set = cere.generate(p)
     words = p.rstrip().split(' ')
     words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
     ont_sequence = []
+    ont_words = []
     for w in words:
         if w in feat_set.keys():
-            if 'ExtOnt' in feat_set[w].keys():
-                ont_sequence.append(feat_set[w]['ExtOnt'][1])
+            ontologies = feat_set[w]
+            if 'ExtOnt' in ontologies.keys():
+                original_ext_ont = ontologies['ExtOnt'][1]
+                ext_ont = original_ext_ont
+                # if items in extont appear in ontology, dont add them!
+                extont_cats = [k.split(':')[0] for k in list(original_ext_ont)]
+                if 'Ont' in ontologies.keys():
+                    original_ont = ontologies['Ont'][1]
+                    ont_cats = [k.split(':')[0] for k in list(original_ont)]
+                    ext_ont = original_ont
+                    extra_keys = [k for k in extont_cats if k not in ont_cats]
+                    extra_keys += 'type'
+                    for ek in extra_keys:
+                        original_keys = list(original_ext_ont)
+                        updates = [o for o in original_keys if ek in o]
+                        ext_ont.update(updates)
+                ont_sequence.append(ext_ont)
+                ont_words.append(w)
             elif 'Ont' in feat_set[w].keys():
-                ont_sequence.append(feat_set[w]['Ont'][1])
+                original_ont = ontologies['Ont'][1]
+                ont_sequence.append(original_ont)
+                ont_words.append(w)
     return ont_sequence
 
 
@@ -287,21 +389,45 @@ def get_deep_ontology(row, cere):
     return phrase_exont
 
 
-def get_hypernyms(row, cere):
+def get_hypernyms(row, cere, feat_set=None):
     p = row['PHRASE']
+    if not feat_set:
+        feat_set = cere.generate(p)
     words = p.rstrip().split(' ')
     words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
-    phrase_ont = set()
-    phrase_exont = set()
-    phrase_hypernyms = set()
+    hypernym_sequence = []
     for w in words:
-        if w not in cere.FeatSet.keys():
-            continue
-        feats = cere.FeatSet[w]
-        # phrase_ont = phrase_ont.union(set(feats['Ont'][1])) if 'Ont' in feats.keys() else phrase_ont
-        # phrase_exont = phrase_exont.union(set(feats['ExtOnt'])) if 'ExtOnt' in feats.keys() else phrase_exont
-        phrase_hypernyms = phrase_hypernyms.union(set(feats['Hyper_Synonyms'][1])) if 'Hyper_Synonyms' in feats.keys() else phrase_hypernyms
-    return phrase_hypernyms
+        if w in feat_set.keys():
+            if 'Hyper_Synonyms' in feat_set[w].keys():
+                hypernym_sequence.append(feat_set[w]['Hyper_Synonyms'][1])
+    return hypernym_sequence
+
+
+def get_parsed_sentence(row, cere, feat_set=None):
+    p = row['PHRASE']
+    if not feat_set:
+        feat_set = cere.generate(p)
+    doc = nlp(p)
+    word_seq = []
+    for token in doc:
+        if token.text in feat_set.keys():
+            word_seq.append({
+                'word': token.text,
+                'pos': token.pos_,
+                'tag': token.tag_,
+                'dep': token.dep_
+            })
+    return word_seq
+
+
+def get_wn_attributes_for_df(row, cere):
+    p = row['PHRASE']
+    feat_set = cere.generate(p)
+    ont_sequence = get_ontology_sequence(row, cere, feat_set=feat_set)
+    extont_sequence = get_extont_sequence(row, cere, feat_set=feat_set)
+    hypernyms = get_hypernyms(row, cere, feat_set=feat_set)
+    parsed_sentence = get_parsed_sentence(row, cere, feat_set=feat_set)
+    return ont_sequence, extont_sequence, hypernyms, parsed_sentence
 
 
 def get_closest_gesture_from_row_sets(row, df, n=10):
@@ -436,65 +562,6 @@ def build_distance_matrix(df):
     return dist_mat
 
 
-def dist_lambda(row, comp_row):
-    sims = 0
-    for k in row.keys():
-        if row[k] == '-' and comp_row[k] == '-':
-            sims += 1
-        elif row[k] != '-' and comp_row[k] != '-':
-            sims += 1
-        elif row[k] == '-':
-            sims -= 1
-        elif comp_row[k] == '-':
-            sims -= 1
-    return sims
-
-
-def get_value_vector(row):
-    # ugh can't get the listcomp working
-    vec = []
-    for k in SEMANTIC_CATEGORIES.keys():
-        vec.append(len(list(row[k])) if row[k] != '-' else -1)
-    return np.array(vec)
-
-
-def get_avg_dist_of_vectors(vecs):
-    dists = []
-    for i in range(len(vecs)):
-        for j in range(len(vecs)):
-            dists.append(np.linalg.norm(vecs[i] - vecs[j]))
-    return np.mean(dists)
-
-
-# using the vectors and distance to get nearest thing
-def get_nearest_row_vectors(df, row):
-    v = row['vector']
-    ndf = df.copy()
-    ndf['comp_dists'] = ndf.apply(lambda r: np.linalg.norm(r['vector'] - v), axis=1)
-    ndf = ndf.sort_values(by='comp_dists')
-    if len(ndf) == 1:               # there's only one in this category
-        return ndf.iloc[0], 0
-    ret_row = ndf.iloc[1]                       # highest match is probably the second one
-    if ret_row['PHRASE'] != row['PHRASE']:     # but if there's a perfect match, make sure to return a different one
-        return ret_row, ret_row['comp_dists']
-    else:
-        return ndf.iloc[0], ndf.iloc[0]['comp_dists']        # if it's a perfect match!
-
-
-def get_nearest_row(df, i):
-    comp_row = df.iloc[i]
-    ndf = df.copy()
-    ndf['comp_dists'] = ndf.apply(lambda row: dist_lambda(row, comp_row), axis=1)
-    ndf = ndf.sort_values(by='comp_dists', ascending=False)
-    # need to return the highest match that isn't the same phrase
-    ret_row = ndf.iloc[1]                       # highest match is probably the second one
-    print(comp_row['PHRASE'], ret_row['PHRASE'])
-    if ret_row['PHRASE'] != comp_row['PHRASE']:     # but if there's a perfect match, make sure to return a different one
-        return ret_row, ret_row['comp_dists']
-    else:
-        return ndf.iloc[0], ndf.iloc[0]['comp_dists']        # if it's a perfect match!
-
-
 # will create clusters in form of df
 def create_category_clusters(df):
     clusters = {}
@@ -503,72 +570,6 @@ def create_category_clusters(df):
         clusters[k]['df'] = df[df[k] != '-']
         clusters[k]['len'] = len(clusters[k]['df'])
     return clusters
-
-
-# given a df of gesture/semantic with vectors, finds the maximum similarity between different gestures
-def get_max_similarity_score(df):
-    m_dist = 1000
-    for i in range(len(df)):
-        row = df.iloc[i]
-        _, d = get_nearest_row_vectors(df, row)
-        if d < m_dist:
-            m_dist = d
-    return m_dist
-
-
-def get_vector_distances(vecs):
-    dists = []
-    if len(vecs) == 0 or len(vecs) == 1:
-        return [0]
-    for i in range(len(vecs)):
-        for j in range(len(vecs)):
-            dists.append(np.linalg.norm(vecs[i] - vecs[j]))
-    return dists
-
-
-def get_cluster_profiles(clusters, df):
-    semantic_category = []
-    lengths = []
-    silhouette_scores = []
-    custom_silhouette_scores = []
-    max_sim_scores = []
-    min_sim_scores = []
-    mean_sim_scores = []
-    median_sim_scores = []
-
-    for k in clusters.keys():
-        semantic_category.append(k)
-        l = clusters[k]['len']
-        lengths.append(l)
-        custom_score = get_custom_cluster_silhouette_score(clusters, k, df)
-        custom_silhouette_scores.append(custom_score)
-        sc = get_cluster_silhouette_score(clusters, k, df)
-        silhouette_scores.append(sc)
-        dists = get_vector_distances(clusters[k]['df']['vector'].values)
-        max_sim_scores.append(min(dists))
-        min_sim_scores.append(max(dists))
-        mean_sim_scores.append(np.mean(dists))
-        median_sim_scores.append(np.median(dists))
-        print(k, "(%s)" % l, sc, 'min/max: %s/%s' % (min(dists), max(dists)), 'median: %s' % np.median(dists), 'mean: %s' % np.mean(dists))
-        print('%s custom score: %s' % (k, custom_score))
-    ret_df = pd.DataFrame(list(zip(semantic_category, lengths, silhouette_scores, custom_silhouette_scores, \
-                           max_sim_scores, min_sim_scores, mean_sim_scores, median_sim_scores)),
-                          columns=['semantic_category', 'length', 'silhouette_score', 'custom_silhouette_score', \
-                           'min_distance', 'max_distance', 'mean_distance', 'median_distance'])
-    return ret_df
-
-
-# this.... isn't quite right.
-def get_cluster_silhouette_score(clusters, k, df):
-    vecs = clusters[k]['df']['vector'].values
-    avg_within = np.mean(get_vector_distances(vecs))
-    avg_between = np.mean(get_vector_distances(df['vector'].values))
-
-    # (b-a) / max(a,b)
-    # a = average intra-cluster distance (avg dist between each point in a cluster)
-    # b = average inter-cluster distance (avg dist between point and next-closest)
-    sil = (avg_between - avg_within) / max([avg_between, avg_within])
-    return sil
 
 
 """
@@ -607,32 +608,6 @@ def get_nearest_non_overlapping_gesture(df, row):
     return nolap_df.iloc[0], nolap_df.iloc[0]['comp_dists']
 
 
-# from cluster k, get a random pair of closest gestures
-def get_random_closest_gestures_within_cluster(clusters, k):
-    df = clusters[k]['df']
-    if len(df) < 2:
-        print("LEN DF: ", len(df))
-        return df.iloc[0], df.iloc[0], 0
-    r = df.iloc[random.randint(0, len(df)-1)]
-    nr, d = get_nearest_row_vectors(df, r)
-    return r, nr, d
-
-
-def get_random_gesture_within_cluster(clusters, k):
-    df = clusters[k]['df']
-    if len(df) < 2:
-        return df.iloc[0], df.iloc[0], 0
-    ind1 = random.randint(0, len(df)-1)
-    ind2 = random.randint(0, len(df)-1)
-    while ind1 == ind2:
-        ind2 = random.randint(0, len(df) - 1)
-
-    r1 = df.iloc[ind1]
-    r2 = df.iloc[ind2]
-    d = np.linalg.norm(r1['vector'] - r2['vector'])
-    return r1, r2, d
-
-
 # gives two gestures that have no overlapping categories
 def get_fully_non_overlapping_gestures(df, max_iter=1000):
     lim = 0
@@ -650,35 +625,6 @@ def get_fully_non_overlapping_gestures(df, max_iter=1000):
         return r, j
 
 
-# given a cluster, get a transcript from that cluster,
-# a nearby gesture also in that cluster,
-# and a far-away gesture, not in that cluster
-def get_transcript_close_and_far_gesture(clusters, k, df):
-    r1, r2, d = get_random_closest_gestures_within_cluster(clusters, k)
-    r3, _ = get_max_different_gesture(df, r1)
-    return r1, r2, d, r3
-
-
-def get_transcript_random_and_far_gesture(clusters, k, df):
-    r1, r2, d = get_random_gesture_within_cluster(clusters, k)
-    r3, _ = get_max_different_gesture(df, r1)
-    return r1, r2, d, r3
-
-
-def get_max_different_gesture(df, row):
-    v = row['vector']
-    ndf = df.copy()
-    ndf['comp_dists'] = ndf.apply(lambda r: np.linalg.norm(r['vector'] - v), axis=1)
-    ndf = ndf.sort_values(by='comp_dists', ascending=False)
-    if len(ndf) == 1:               # there's only one in this category
-        return ndf.iloc[0], 0
-    ret_row = ndf.iloc[1]                       # highest match is probably the second one
-    if ret_row['PHRASE'] != row['PHRASE']:     # but if there's a perfect match, make sure to return a different one
-        return ret_row, ret_row['comp_dists']
-    else:
-        return ndf.iloc[0], ndf.iloc[0]['comp_dists']        # if it's a perfect match!
-
-
 def assign_categories(df):
     for k in list(SEMANTIC_CATEGORIES.keys()):
         df[k] = df.apply(lambda row: [s for s in SEMANTIC_CATEGORIES[k] if s in row['PHRASE']] \
@@ -689,21 +635,7 @@ def assign_categories(df):
     return df
 
 
-def get_nearest_gesture_by_encoding_dist(df, r):
-    v = r['encoding']
-    if len(df) < 2:
-        print('WEE BABBY DF FOUND')
-        return df.iloc[0], 0
-    tdf = df.copy()
-    tdf['comp_dists'] = tdf.apply(lambda row: np.linalg.norm(row['encoding'][0] - v[0]), axis=1)
-    tdf = tdf.sort_values(by='comp_dists', ascending=True)
-    if tdf.iloc[0]['PHRASE'] == r['PHRASE']:
-        return tdf.iloc[1], tdf.iloc[1]['comp_dists']
-    else:
-        return tdf.iloc[0], tdf.iloc[0]['comp_dists']      # we got a perfect match, this would only happen if exact same transcript.
-
-
-def get_far_gesture_by_encoding(df, r, sample=10):
+def get_far_gesture_by_encoding(df, r=None, exclude=[], sample=10):
     v = r['encoding']
     if len(df) < 2:
         return df.iloc[0]
@@ -715,27 +647,6 @@ def get_far_gesture_by_encoding(df, r, sample=10):
     if si >= len(tdf):
         return tdf.iloc[0], tdf.iloc[0]['comp_dists']   # if we can't sample from furthest N, just return furthest.
     return tdf.iloc[si], tdf.iloc[si]['comp_dists'] # guaranteed to not be the same bc
-
-
-def get_transcript_close_and_far_embedding(clusters, k, df):
-    cdf = clusters[k]['df']
-    ind1 = random.randint(0, len(cdf)-1)
-    r1 = cdf.iloc[ind1]
-    r2, d2 = get_nearest_gesture_by_encoding_dist(df, r1)   # cluster agnostic!!
-    r3, _ = get_far_gesture_by_encoding(df, r1)            # cluster agnostic!!
-    return r1, r2, d2, r3
-
-
-def get_transcript_random_and_far_embedding(clusters, k, df):
-    cdf = clusters[k]['df']
-    ind1 = random.randint(0, len(cdf)-1)
-    ind2 = random.randint(0, len(df)-1)
-    r1 = cdf.iloc[ind1]
-    r2 = df.iloc[ind2]
-    # cluster agnostic!!
-    d = np.linalg.norm(r1['encoding'][0] - r2['encoding'][0])
-    r3, _ = get_far_gesture_by_encoding(df, r1)            # cluster agnostic!!
-    return r1, r2, d, r3
 
 
 # adds Cluster key of value k to df
@@ -777,16 +688,6 @@ def write_fns_in_df_to_folder(df, host_dirname="combo_fillers", dirname="stimuli
         copyfile(src, dest)
 
 
-def initialize_ontologies(df):
-    print("Initializing all phrase ontologies")
-    cere = CII()
-    phrases = df.PHRASE.values
-    # this intializes the FeatSet in cere to include all our words!
-    for p in tqdm(phrases):
-        cere.generate(p, debprint=False)
-    return cere
-
-
 def insert_same_video(index, df):
     df.at[index, 'videoA_fn'] = df.iloc[index]['videoB_fn']
     df.at[index, 'video_relation'] = 'CONTROL_SAME_VIDEO'
@@ -823,8 +724,31 @@ def buffer_debrief_rows(df, n=1):
     return pd.concat([df, ndf])
 
 
+def add_use_embeddings(df):
+    df['use_embedding'] = embed(list(df['PHRASE'].values))
+    # now turn it into a vector instead of a tuble of tensors?
+    df['use_embedding'] = df.apply(lambda row: np.array([t.numpy() for t in row['use_embedding']]), axis=1)
+    return df
+
+
+def get_most_similar_sentence_USE(df, row=None, exclude=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+        # print(row['PHRASE'])
+    tdf = df.copy()
+    tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['use_embedding'] - row['use_embedding']), axis=1)
+    tdf = tdf.sort_values(by='comp_dists', ascending=True)
+    tdf = tdf[tdf['video_fn'] != row['video_fn']]
+    if exclude:
+        exclude_fns = [r['video_fn'] for r in exclude]
+        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
+    close_row = get_closest_timing_to_row(row, tdf[:10])
+    # print(close_row['PHRASE'])
+    return close_row
+
+
 # gets a df of 10 that has one from each category
-def get_representative_df(data_df):
+def get_representative_df(data_df, view_name='video_participant_view'):
     COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn', 'videoB_fn',
             'video_relation', 'category', 'predicted_video',
             'videoA_transcript', 'videoB_transcript',
@@ -851,7 +775,10 @@ def get_representative_df(data_df):
     fxns = [
         get_closest_gesture_from_row_embeddings,
         get_ontology_sequence_match,
-        get_extont_sequence_match
+        get_extont_sequence_match,
+        get_most_similar_sentence_USE,
+        get_farthest_match_embedding,
+        get_least_similar_sentence_USE
     ]
     predicted_video = []  # either 'A' or 'B'
     video_relation = []
@@ -879,6 +806,7 @@ def get_representative_df(data_df):
         f1 = fxns[i]
         # first the fxn vs. random
         r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+
         vids = [(r1, 0), (r2, 1)]  # we know r1 is the 'good' one
         random.shuffle(vids)
         predicted_i = 'A' if vids[0][1] == 0 else 'B'
@@ -889,6 +817,23 @@ def get_representative_df(data_df):
         A_rows.append(vids[0][0])
         B_rows.append(vids[1][0])
         video_relation.append(str(f1.__name__ + '_v_random'))
+
+
+        # first the fxn vs. FAR
+        r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+
+        vids = [(r1, 0), (r2, 1)]  # we know r1 is the 'good' one
+        random.shuffle(vids)
+        predicted_i = 'A' if vids[0][1] == 0 else 'B'
+        predicted_video.append(predicted_i)
+        a_fxns.append([f1.__name__ if predicted_i == 'A' else 'get_random_row'])
+        b_fxns.append([f1.__name__ if predicted_i == 'B' else 'get_random_row'])
+        T_rows.append(r0)
+        A_rows.append(vids[0][0])
+        B_rows.append(vids[1][0])
+        video_relation.append(str(f1.__name__ + '_v_random'))
+
+
 
         # and a few with the actual gesture there
         r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
@@ -934,7 +879,7 @@ def get_representative_df(data_df):
     vidB_ontology_match = [get_ontology_distances(T_rows[i], B_rows[i]) for i in range(len(B_rows))]
 
     randomise_trials = [random.randint(1, len(A_rows))] * len(A_rows)
-    display = ['video_participant_view'] * len(A_rows)
+    display = [view_name] * len(A_rows)
     show_progress = [1] * len(A_rows)
     category = [None] * len(A_rows)
 
@@ -952,10 +897,10 @@ def get_representative_df(data_df):
     return exp_df
 
 
-def get_experimental_df(data_df):
-    df1 = get_representative_df(data_df)
-    df2 = get_representative_df(data_df)
-    df3 = get_representative_df(data_df)
+def get_experimental_df(data_df, view_name=None):
+    df1 = get_representative_df(data_df, view_name=view_name)
+    df2 = get_representative_df(data_df, view_name=view_name)
+    df3 = get_representative_df(data_df, view_name=view_name)
     exp_df = pd.concat([df1, df2, df3])
     experimental_df = exp_df.sample(frac=1).reset_index()
     # insert missing video link at 13
@@ -984,11 +929,12 @@ if __name__ == "__main__":
                                    help="file where all the video fns are")
     params = parser.parse_args()
     f = params.file
-    embeddings = params.embedding_file
+    pf = params.embedding_file
     df = pd.DataFrame(columns=['PHRASE'] + list(SEMANTIC_CATEGORIES.keys()))
 
-    if embeddings:
-        df = pd.read_pickle(embeddings)
+    if pf:
+        # pf = os.path.join('speech-and-semantics2gesture', 'Splits', 'combo_fillers', '_transcript_encodings.pkl')
+        df = pd.read_pickle(pf)
         df['PHRASE'] = df.apply(lambda row: ' '.join(row['transcript']), axis=1)
         df['SPLIT'] = df.apply(lambda row: row['fn'].split('_')[3], axis=1)
         df = assign_categories(df)
@@ -1013,12 +959,20 @@ if __name__ == "__main__":
         df = df.fillna('-')
 
     cere = CII()
-    df['shallow_ont'] = df.progress_apply(lambda row: get_shallow_ontology(row, cere), axis=1)
-    df['deep_ont'] = df.apply(lambda row: get_deep_ontology(row, cere), axis=1)
-    df['hypernyms'] = df.apply(lambda row: get_hypernyms(row, cere), axis=1)
+    # df['shallow_ont'] = df.progress_apply(lambda row: get_shallow_ontology(row, cere), axis=1)
+    # df['deep_ont'] = df.apply(lambda row: get_deep_ontology(row, cere), axis=1)
+    # df['hypernyms'] = df.apply(lambda row: get_hypernyms(row, cere), axis=1)
 
-    df['ont_sequence'] = df.progress_apply(lambda row: get_ontology_sequence(row, cere), axis=1)
-    df['extont_sequence'] = df.progress_apply(lambda row: get_extont_sequence(row, cere), axis=1)
+    wn_properties = df.progress_apply(lambda row: get_wn_attributes_for_df(row, cere), axis=1)
+
+    df['ont_sequence'] = [t[0] for t in wn_properties]
+    df['extont_sequence'] = [t[1] for t in wn_properties]
+    df['hypernyms'] = [t[2] for t in wn_properties]
+    df['parse'] = [t[3] for t in wn_properties]
+
+
+    # df['ont_sequence'] = df.progress_apply(lambda row: get_ontology_sequence(row, cere), axis=1)
+    # df['extont_sequence'] = df.progress_apply(lambda row: get_extont_sequence(row, cere), axis=1)
 
     # get the feature vector
     df['vector'] = df.apply(get_value_vector, axis=1)
@@ -1031,6 +985,9 @@ if __name__ == "__main__":
     df['time_length'] = df.apply(lambda row: get_time_lambda(row), axis=1)
     df = df[df['time_length'] >= 1.8]   # arbitrary...
 
+    # add use!!
+    df = add_use_embeddings(df)
+
     # get the clusters
     clusters = create_category_clusters(df)
 
@@ -1041,7 +998,7 @@ if __name__ == "__main__":
     profile_df = get_cluster_profiles(clusters, df)
 
     # build up a df of examples
-    num_samples = 20
+    num_samples = 1
     for i in tqdm(range(num_samples)):
         ex_df = get_experimental_df(df)
         ex_df.to_csv(f'full_test{i}.csv')

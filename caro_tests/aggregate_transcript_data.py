@@ -1,9 +1,11 @@
 from bert_embedding import BertEmbedding
 import pandas as pd
 import numpy as np
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertModel, BertConfig
 import os
 import pickle
+import json
+import torch
 
 """
 This file contains the functions that encode the words in the JSON transcriptions using BERT.
@@ -230,8 +232,10 @@ def get_bert_embedding(sentence_words, tokenizer, bert_model):
     encoded_words = bert_model(tokenized_sentence)[0]
     # Remove batch dimension and convert to numpy array
     encoded_words = encoded_words.squeeze(axis=0).detach().numpy()
-    encoded_words = merge_subword_encodings(sentence_words, tokenized_sentence, encoded_words, tokenizer)
     return encoded_words
+    # TODO carolyn just trying this out
+    #encoded_words = merge_subword_encodings(sentence_words, tokenized_sentence, encoded_words, tokenizer)
+    #return encoded_words
 
 
 def merge_subword_encodings(sentence_words, sub_word_tokens, sub_word_encodings, tokenizer):
