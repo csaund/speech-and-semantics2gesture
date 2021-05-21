@@ -39,13 +39,27 @@ def get_closest_gesture_from_row_embeddings(df, row=None, exclude=[]):
     v = row['encoding']
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
-    tdf = tdf.sort_values(by='comp_dists', ascending=True)
+    gest = sort_exclude_timing(tdf, row, by='comp_dists', ascending=True, exclude=exclude, n=8)
+    return gest
+
+
+# takes [set(), set()] and returns superset
+# ex [{A, B}, {C}, {D}]
+# returns {A, B, C, D}
+def combine_list_of_sets(S):
+    super = set()
+    for s in S:
+        super.update(s)
+    return super
+
+
+def sort_exclude_timing(df, row, by, ascending=False, exclude=[], n=10):
+    tdf = df.sort_values(by=by, ascending=ascending)
     tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
     if exclude:
         exclude_fns = [r['video_fn'] for r in exclude]
         tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
-    gest = get_closest_timing_to_row(row, tdf[:10])
-    # print(gest['PHRASE'])
+    gest = get_closest_timing_to_row(row, tdf[:n])
     return gest
 
 
@@ -54,24 +68,27 @@ def get_ontology_pos_overlaps(r1, r2):
     # get the % of overlaps within those pos.
     r1_pos = [r['pos'] for r in r1['parse']]
     r2_pos = [r['pos'] for r in r2['parse']]
+    overlaps = []
     for pos in r1_pos:
         all_r1 = [r['word'] for r in r1['parse'] if r['pos'] == pos]
         all_r2 = [r['word'] for r in r2['parse'] if r['pos'] == pos]
+        r1_pos_onts = combine_list_of_sets([r[0] for r in r1['ont_sequence'] if r[1] in all_r1])
+        r2_pos_onts = combine_list_of_sets([r[0] for r in r2['ont_sequence'] if r[1] in all_r2])
+        # TODO do intersection here, and maybe difference as well?
+        intersect = len(r1_pos_onts.intersection(r2_pos_onts))
+        o1_diff = len(r1_pos_onts - r2_pos_onts)
+        o2_diff = len(r2_pos_onts - r1_pos_onts)
+        overlaps.append(intersect - o1_diff - o2_diff)
+    return sum(overlaps)
 
 
-
-def get_ontology_pos_match(df, row, exclude=[]):
+def get_ontology_pos_match(df, row=None, exclude=[]):
     if row is None:
         row = df.sample(1).iloc[0]
+        print(row['PHRASE'])
     tdf = df.copy()
     tdf['set_overlaps'] = tdf.apply(lambda r: get_ontology_pos_overlaps(row, r), axis=1)
-    tdf = tdf.sort_values(by='set_overlaps', ascending=False)
-    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
-    if exclude:
-        exclude_fns = [r['video_fn'] for r in exclude]
-        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
-    gest = get_closest_timing_to_row(row, tdf[:10])
-    # print(gest['PHRASE'])
+    gest = sort_exclude_timing(tdf, row, by='set_overlaps', ascending=False, exclude=exclude, n=5)
     return gest
 
 
@@ -79,9 +96,9 @@ def get_num_ontology_overlaps(r1, r2):
     ont1 = set()
     ont2 = set()
     for o in r1['ont_sequence']:
-        ont1 = ont1.union(o)
-    for o in r2['ont_sequence']:
-        ont2 = ont2.union(o)
+        ont1 = ont1.union(o[0])         # todo separate this bc has word?
+    for o in r2['ont_sequence']:        # todo want to make this just operate on sets?
+        ont2 = ont2.union(o[0])
 
     intersect = len(ont1.intersection(ont2))
     o1_diff = len(ont1 - ont2)
@@ -96,13 +113,7 @@ def get_ontology_set_match(df, row, exclude=[]):
         row = df.sample(1).iloc[0]
     tdf = df.copy()
     tdf['set_overlaps'] = tdf.apply(lambda r: get_num_ontology_overlaps(row, r), axis=1)
-    tdf = tdf.sort_values(by='set_overlaps', ascending=False)
-    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
-    if exclude:
-        exclude_fns = [r['video_fn'] for r in exclude]
-        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
-    gest = get_closest_timing_to_row(row, tdf[:10])
-    # print(gest['PHRASE'])
+    gest = sort_exclude_timing(tdf, row, by='set_overlaps', ascending=False, exclude=exclude, n=8)
     return gest
 
 
@@ -113,13 +124,7 @@ def get_farthest_match_embedding(df, row, exclude=[]):
     v = row['encoding']
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['encoding'][0] - v[0]), axis=1)
-    tdf = tdf.sort_values(by='comp_dists', ascending=False)
-    tdf = tdf[tdf['video_fn'] != row['video_fn']]   # remove our exact match
-    if exclude:
-        exclude_fns = [r['video_fn'] for r in exclude]
-        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
-    gest = get_closest_timing_to_row(row, tdf[:10])
-    # print(gest['PHRASE'])
+    gest = sort_exclude_timing(tdf, row, by='comp_dists', ascending=False, exclude=exclude, n=8)
     return gest
 
 
@@ -129,14 +134,8 @@ def get_least_similar_sentence_USE(df, row, exclude=[]):
         # print(row['PHRASE'])
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['use_embedding'] - row['use_embedding']), axis=1)
-    tdf = tdf.sort_values(by='comp_dists', ascending=False)
-    tdf = tdf[tdf['video_fn'] != row['video_fn']]
-    if exclude:
-        exclude_fns = [r['video_fn'] for r in exclude]
-        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
-    close_row = get_closest_timing_to_row(row, tdf[:10])
-    # print(close_row['PHRASE'])
-    return close_row
+    gest = sort_exclude_timing(tdf, row, by='comp_dists', ascending=False, exclude=exclude, n=8)
+    return gest
 
 
 def check_use_vs_bert(df):
@@ -447,14 +446,8 @@ def get_most_similar_sentence_USE(df, row=None, exclude=[]):
         # print(row['PHRASE'])
     tdf = df.copy()
     tdf['comp_dists'] = tdf.apply(lambda r: np.linalg.norm(r['use_embedding'] - row['use_embedding']), axis=1)
-    tdf = tdf.sort_values(by='comp_dists', ascending=True)
-    tdf = tdf[tdf['video_fn'] != row['video_fn']]
-    if exclude:
-        exclude_fns = [r['video_fn'] for r in exclude]
-        tdf = tdf[~tdf['video_fn'].isin(exclude_fns)]
-    close_row = get_closest_timing_to_row(row, tdf[:10])
-    # print(close_row['PHRASE'])
-    return close_row
+    gest = sort_exclude_timing(tdf, row, by='comp_dists', ascending=True, exclude=exclude, n=8)
+    return gest
 
 
 # gets a df of 10 that has one from each category

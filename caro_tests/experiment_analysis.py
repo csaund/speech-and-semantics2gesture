@@ -5,6 +5,11 @@ import re
 import numpy as np
 import scipy
 
+# TODO FIRST THING:
+# TODO DOUBLE CHECK THAT THE RESULTS ARE FROM
+# TODO DIFFERENT ANALYSIS PAIRS!!!
+# todo aka make sure it's not the same videos being compared within a comparison group
+
 """
 Stacy notes 
 each ont element, there is a class and an instance
