@@ -52,8 +52,36 @@ category_mapper = {
     'get_ontology_sequence_match_v_get_extont_sequence_match': 'shallow_deep',
     'get_closest_gesture_from_row_embeddings_v_random': 'random_embedded',
     'get_ontology_sequence_match_v_random': 'random_shallow',
-    'original_gesture_v_random': 'actual_random'
+    'original_gesture_v_random': 'actual_random',
+    'get_least_similar_sentence_USE_v_get_farthest_match_embedding': 'bad_bad',
+    'get_farthest_match_embedding_v_random': 'bad_bad',
+    'get_closest_gesture_from_row_embeddings_v_get_least_similar_sentence_USE': 'embedded_bad'
 }
+
+def cat_function(k):
+    n = ''
+    if 'original_gesture' in k:
+        n += 'actual_'
+    if 'random' in k:
+        n += 'random_'
+    if 'get_closest_gesture_from_row_embeddings' in k:
+        n += 'embeddedsim_'
+    if 'most_similar_sentence_USE' in k:
+        n += 'usesim_'
+    if 'ontology_sequence_match' in k:
+        n += 'ontseq'
+    if 'extont_sequence_match' in k:
+        n += 'extontseq_'
+    if 'ontology_set_match' in k:
+        n += 'ontset_'
+    if 'get_farthest_match_embedding' in k:
+        n += 'embeddedfar_'
+    if 'ontology_pos_match' in k:
+        n += 'ontpos_'
+    if 'least_similar_sentence_USE' in k:
+        n += 'usefar_'
+    return n[:-1]
+
 
 category_to_group_mapper = {
     'actual': ['actual_random', 'actual_embedded', 'actual_shallow', 'actual_deep'],
@@ -67,28 +95,11 @@ category_to_group_mapper = {
 def print_analysis_categories(df):
     tdf = df.copy()
     tdf = tdf.dropna(subset=['video_relation'])
-    tdf['analysis_group'] = tdf.apply(lambda row: category_mapper[row['video_relation']] if row['video_relation'] != np.nan else None, axis=1)
+    tdf['analysis_group'] = tdf.apply(lambda row: cat_function(row['video_relation']) if row['video_relation'] != np.nan else None, axis=1)
     ##
-    actual_random = len(tdf[tdf['analysis_group'] == 'actual_random'])
-    actual_embedded = len(tdf[tdf['analysis_group'] == 'actual_embedded'])
-    actual_shallow = len(tdf[tdf['analysis_group'] == 'actual_shallow'])
-    actual_deep = len(tdf[tdf['analysis_group'] == 'actual_deep'])
-    random_embedded = len(tdf[tdf['analysis_group'] == 'random_embedded'])
-    random_shallow = len(tdf[tdf['analysis_group'] == 'random_shallow'])
-    random_deep = len(tdf[tdf['analysis_group'] == 'random_deep'])
-    embedded_shallow = len(tdf[tdf['analysis_group'] == 'embedded_shallow'])
-    embedded_deep = len(tdf[tdf['analysis_group'] == 'embedded_deep'])
-    shallow_deep = len(tdf[tdf['analysis_group'] == 'shallow_deep'])
-    print('actual_random:', actual_random)
-    print('actual_embedded:', actual_embedded)
-    print('actual_shallow:', actual_shallow)
-    print('actual_deep:', actual_deep)
-    print('random_embedded:', random_embedded)
-    print('random_shallow:', random_shallow)
-    print('random_deep:', random_deep)
-    print('embedded_shallow:', embedded_shallow)
-    print('embedded_deep:', embedded_deep)
-    print('shallow_deep:', shallow_deep)
+    for ag in tdf['analysis_group'].unique():
+        gdf = len(tdf[tdf['analysis_group'] == ag])
+        print(f'{ag}:', gdf)
 
 
 def add_analysis_category(df):

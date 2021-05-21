@@ -20,6 +20,30 @@ embed = hub.load("https://tfhub.dev/google/universal-sentence-encoder/4")
 nlp = spacy.load("en_core_web_lg")
 
 
+def compare_all_sentence_functions(df, row=None, fxns=[]):
+    if row is None:
+        row = df.sample(1).iloc[0]
+        print("Phrase to match: ")
+        print(row['PHRASE'])
+        print("=======================")
+    if not fxns:
+        fxns = [
+            get_closest_gesture_from_row_embeddings,
+            get_most_similar_sentence_USE,
+            get_ontology_pos_match,
+            get_ontology_set_match,
+            get_ontology_sequence_match,
+            get_random_row,
+            get_least_similar_sentence_USE,
+            get_farthest_match_embedding
+        ]
+    for f in fxns:
+        name = f.__name__
+        tr = f(df, row)
+        print(f'{name}: \n {tr["PHRASE"]}')
+        print("------------------------")
+
+
 def get_random_row(df, row=None, exclude=[]):
     if row is not None:
         samp = df.sample(25)
@@ -186,9 +210,9 @@ def get_total_ontologies(sequence):
     return tot
 
 
-def get_ontology_distances(r1, r2):
-    r1_ont_only = [s[0] for s in r1['ont_sequence']]
-    r2_ont_only = [s[0] for s in r2['ont_sequence']]
+def get_ontology_distances(r1, r2, ont_level='ont_sequence'):
+    r1_ont_only = [s[0] for s in r1[ont_level]]
+    r2_ont_only = [s[0] for s in r2[ont_level]]
     sim = calculate_set_sequence_similarity(r1_ont_only, r2_ont_only)
     tot = min(get_total_ontologies(r1_ont_only), get_total_ontologies(r2_ont_only))
     if not tot:
@@ -197,19 +221,15 @@ def get_ontology_distances(r1, r2):
     return float(sim / tot)
 
 
-def get_transcript_gesture_match(cluster_df, full_df, matching_fxn1, matching_fxn2):
+def get_transcript_gesture_match(df, matching_fxn1, matching_fxn2):
     """
     Given a sub-df to get a random gesture from, gets a random gesture
     and two gestures from the full DF according to the matching functions passed.
     For a description of potential matches see the above comment.
     """
-    row = get_random_row(cluster_df)
-    t0 = matching_fxn1(full_df, row)
-    t1 = matching_fxn2(full_df, row, exclude=[row, t0])
-    if(t0['video_fn'] == t1['video_fn']):
-        print('got the same video fn with functions')
-        print(matching_fxn1.__name__)
-        print(matching_fxn2.__name__)
+    row = get_random_row(df)
+    t0 = matching_fxn1(df, row)
+    t1 = matching_fxn2(df, row, exclude=[row, t0])
     return row, t0, t1
 
 
@@ -226,11 +246,10 @@ def get_ontology_sequence_match(df, row, exclude=[]):
     return r
 
 
-# TODO right now this is... THE SAME AS ONTOLOGY?????
 def get_extont_sequence_match(df, row, exclude=[]):
     transcript_ont = row['extont_sequence']
     tdf = df.copy()
-    tdf['sequence_val'] = tdf.apply(lambda r: get_ontology_distances(row, r), axis=1)
+    tdf['sequence_val'] = tdf.apply(lambda r: get_ontology_distances(row, r, ont_level='extont_sequence'), axis=1)
     tdf = tdf.sort_values('sequence_val', ascending=False)
     tdf = tdf[tdf['video_fn'] != row['video_fn']]       # remove original
     if exclude:
@@ -477,12 +496,29 @@ def get_representative_df(data_df, view_name='video_participant_view'):
     """
     fxns = [
         get_closest_gesture_from_row_embeddings,
+        get_most_similar_sentence_USE,
+        get_ontology_pos_match,
+        get_ontology_set_match,
         get_ontology_sequence_match,
         get_extont_sequence_match,
-        get_most_similar_sentence_USE,
-        get_farthest_match_embedding,
-        get_least_similar_sentence_USE
+        get_random_row,
+        get_least_similar_sentence_USE,
+        get_farthest_match_embedding
     ]
+    """
+            fxns = [
+            get_closest_gesture_from_row_embeddings,
+            get_most_similar_sentence_USE,
+            get_ontology_pos_match,
+            get_ontology_set_match,
+            get_ontology_sequence_match,
+            get_random_row,
+            get_least_similar_sentence_USE,
+            get_farthest_match_embedding
+        ]
+    """
+
+
     predicted_video = []  # either 'A' or 'B'
     video_relation = []
 
@@ -493,7 +529,7 @@ def get_representative_df(data_df, view_name='video_participant_view'):
     b_fxns = []
 
     # add actual v random once per round
-    r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, get_random_row, get_random_row)
+    r0, r1, r2 = get_transcript_gesture_match(data_df, get_random_row, get_random_row)
     vids = [(r0, 0), (r2, 1)]  # we predict r0 in this case
     random.shuffle(vids)
     predicted_i = 'A' if vids[0][1] == 0 else 'B'
@@ -505,10 +541,10 @@ def get_representative_df(data_df, view_name='video_participant_view'):
     B_rows.append(vids[1][0])
     video_relation.append('original_gesture_v_random')
 
-    for i in range(len(fxns)):
+    for i in tqdm(range(len(fxns))):
         f1 = fxns[i]
         # first the fxn vs. random
-        r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+        r0, r1, r2 = get_transcript_gesture_match(data_df, f1, get_random_row)
 
         vids = [(r1, 0), (r2, 1)]  # we know r1 is the 'good' one
         random.shuffle(vids)
@@ -523,7 +559,7 @@ def get_representative_df(data_df, view_name='video_participant_view'):
 
 
         # first the fxn vs. FAR
-        r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+        r0, r1, r2 = get_transcript_gesture_match(data_df, f1, get_random_row)
 
         vids = [(r1, 0), (r2, 1)]  # we know r1 is the 'good' one
         random.shuffle(vids)
@@ -539,7 +575,7 @@ def get_representative_df(data_df, view_name='video_participant_view'):
 
 
         # and a few with the actual gesture there
-        r0, r1, r2 = get_transcript_gesture_match(data_df, data_df, f1, get_random_row)
+        r0, r1, r2 = get_transcript_gesture_match(data_df, f1, get_random_row)
         vids = [(r0, 0), (r1, 1)]  # we predict r0 in this case
         random.shuffle(vids)
         predicted_i = 'A' if vids[0][1] == 0 else 'B'
@@ -555,7 +591,7 @@ def get_representative_df(data_df, view_name='video_participant_view'):
             f2 = fxns[j]  # then the fxn vs. the other fxns
             if f1.__name__ == f2.__name__:
                 continue
-            r3, r4, r5 = get_transcript_gesture_match(data_df, data_df, f1, f2)
+            r3, r4, r5 = get_transcript_gesture_match(data_df, f1, f2)
             vids = [(r4, 0), (r5, 1)]  # r4 is our 'predicted' one by default
             random.shuffle(vids)
             predicted_i = 'A' if vids[0][1] == 0 else 'B'
