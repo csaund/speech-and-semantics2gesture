@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import re
 import numpy as np
 import scipy
+import scipy.stats
+plt.switch_backend('agg')
 
 # TODO FIRST THING:
 # TODO DOUBLE CHECK THAT THE RESULTS ARE FROM
@@ -78,6 +80,8 @@ def cat_function(k):
         n += 'embeddedfar_'
     if 'ontology_pos_match' in k:
         n += 'ontpos_'
+    if 'get_extont_pos_match' in k:
+        n += 'extontpos_'
     if 'least_similar_sentence_USE' in k:
         n += 'usefar_'
     return n[:-1]
@@ -105,7 +109,7 @@ def print_analysis_categories(df):
 def add_analysis_category(df):
     tdf = df.copy()
     tdf = tdf.dropna(subset=['video_relation'])
-    tdf['analysis_group'] = tdf.apply(lambda row: category_mapper[row['video_relation']] if row['video_relation'] != np.nan else None, axis=1)
+    tdf['analysis_group'] = tdf.apply(lambda row: cat_function(row['video_relation']) if row['video_relation'] != np.nan else None, axis=1)
     return tdf
 
 
@@ -223,7 +227,6 @@ def get_group_stats(group_name, choice1, choice2, df):
     choice2_perc = choice2_count / total
     print(f'{choice1}: {choice1_count / total}, {choice2}: {choice2_count / total}')
     return [choice1_perc, choice2_perc]
-
 
 
 def get_data_all_comparison(df):
@@ -463,6 +466,34 @@ def get_sem_and_energy_dfs(df):
     return sem_df, energy_df
 
 
+def load_data_II(dirname='experiment_data'):
+    fns = [f for f in os.listdir(dirname) if 'task' in f]
+    dfs = []
+    # f = 'data_exp_51799-v6_task-djbw.csv'
+    for f in fns:
+        print(f)
+        df = pd.read_csv(os.path.join(dirname, f))
+        if len(df) > 50 and passed_attention_checks(df):
+            print('passed')
+            dfs.append(df)
+    df = pd.concat(dfs)
+    return df
+
+
+def passed_attention_checks(df):
+    tdf = get_trial_df(df)
+    passed_same_vid = tdf.apply(lambda row:
+                            False if (row['videoA_fn'] == row['videoB_fn']) and
+                                     (row['semantic_chosen'] != 'Match Equally' or
+                                      row['energy_chosen'] != 'Equally Energetic')
+                            else True,
+                            axis=1)
+    passed_same_vid = not any(~passed_same_vid)
+    passed_broken = 'Zone8' in df[df['video_relation'] == 'CONTROL_BROKEN_VIDEO']['Zone Name'].unique()
+    print(f'passed same: {passed_same_vid} / passed broken: {passed_broken}')
+    return passed_same_vid and passed_broken
+
+
 def load_data():
     fns =  ['data_exp_51799-v5_questionnaire-alfr.csv',
             'data_exp_51799-v5_questionnaire-anxz.csv',
@@ -496,12 +527,12 @@ def get_main_dfs():
 # 'semantic_response' (video A or video B)
 # 'energetic_response' (video A or video B)
 def get_trial_df(df=None):
-    if not df:
-        df = load_data()
+    if df is None:
+        df = load_data_II()
     # get only the full experiment
     df = df[df['Screen Name'] == 'Screen 1']
     df = df[df['display'] == 'video_participant_view']
-    df = df[~df['video_relation'].isin(['CONTROL_BROKEN_VIDEO', 'CONTROL_SAME_VIDEO'])]
+    # df = df[~df['video_relation'].isin(['CONTROL_BROKEN_VIDEO', 'CONTROL_SAME_VIDEO'])]
     # get only the responses to the questions
     df['Response Type'] = df.apply(lambda row: 'semantic' if row['Zone Name'] == 'VideoA' \
                                                           else (
@@ -511,8 +542,7 @@ def get_trial_df(df=None):
     # use Trial Number to
     df['trial_num'] = flatten([[n, n] for n in range(1, int(len(df)/2)+1)])
     # fuck it just create a new dataframe
-    # todo this is hacky as shit.
-    # todo get rid of broken links / attention checks
+
     ndf = pd.DataFrame()
     cur_trial = 0
     nrow = None
@@ -557,6 +587,7 @@ def get_trial_df(df=None):
         mask = ndf.apply(lambda row: row['videoA_fn'] != row['videoB_fn'], axis=1)
         ndf = ndf[mask]
 
+    # drop those who failed the attention check
     ndf = add_analysis_category(ndf)
     return ndf
 
@@ -565,76 +596,207 @@ def isNaN(num):
     return num != num
 
 
-def plot_use_dist_vs_ont(df):
-
-
-
 flatten = lambda t: [item for sublist in t for item in sublist]
 
-if __name__ == "__main__":
-    data_df = pd.read_csv('trial_2_data.csv')
-    answer_df = data_df.copy()
-    answer_df['correct'] = data_df.apply(get_correct, axis=1)
-    answer_df = answer_df.dropna(subset=['correct'])
-    answer_df['correct_embedding_dist'] = answer_df.apply(get_correct_embedding_distance, axis=1)
-    answer_df['incorrect_embedding_dist'] = answer_df.apply(get_incorrect_embedding_distance, axis=1)
+actual_cats = ['actual_random', 'actual_embeddedsim', 'actual_usesim',
+               'actual_ontse', 'actual_ontpos', 'actual_ontset',
+               'actual_extontseq', 'actual_extontpos']
 
-    # plot x dist vs. y dist where x is correct answer
-    # green is predicted answers, red is deviant answers
-    fig, ax = plt.subplots(1, 1)
-    xs = answer_df['correct_embedding_dist'].values
-    ys = answer_df['incorrect_embedding_dist'].values
-    color = answer_df.apply(lambda row: "green" if row['correct'] else "red", axis=1)
+random_cats = ['actual_random', 'random_embeddedsim', 'random_usesim',
+               'random_ontse', 'random_ontpos', 'random_ontset',
+               'random_extontseq', 'random_extontpos']
 
-    ax.scatter(xs, ys, color=color)
-    ax.set_title('Correct vs. incorrect embedding distances')
-    ax.set_xlabel('Correct video embedding distance to original transcript')
-    ax.set_ylabel('Incorrect video embedding distance to original transcript')
-    ax.legend(['Correct responses', 'incorrect responses'])
-    # fig.show()
 
-    # plot % overlapping categories with color
-    set_df = answer_df[['transcript_categories', 'vidA_overlap', 'vidB_overlap', 'correct_video']]
+def get_percentage_choices_random(df):
+    random_perc = []
+    other_perc = []
+    equal_perc = []
+    for cat in random_cats:
+        ndf = df[df['analysis_group'] == cat]
+        chose_random_mask = ndf.apply(lambda row:
+                                      True if ('random' in row['A_function'] and row.semantic_chosen == 'Video A')
+                                      or ('random' in row['B_function'] and row.semantic_chosen == 'Video B')
+                                      else False, axis=1)
+        num_chose_random = len(ndf[chose_random_mask]) / len(ndf)
+        chose_other_mask = ndf.apply(lambda row:
+                                      True if ('random' not in row['A_function'] and row.semantic_chosen == 'Video A')
+                                      or ('random' not in row['B_function'] and row.semantic_chosen == 'Video B')
+                                      else False, axis=1)
+        num_chose_other = len(ndf[chose_other_mask]) / len(ndf)
+        chose_equal_mask = ndf.apply(lambda row:
+                                      True if (row.semantic_chosen == 'Match Equally')
+                                      else False, axis=1)
+        num_chose_equal = len(ndf[chose_equal_mask]) / len(ndf)
+        random_perc.append(num_chose_random)
+        other_perc.append(num_chose_other)
+        equal_perc.append(num_chose_equal)
 
-    row = set_df.iloc[3]
+    return random_perc, other_perc, equal_perc
 
-    s = row['transcript_categories']
-    l = list(set(re.split("[" + "\\".join(d) + "]", s)))
-    l.remove('')
-    set(l)
 
-    """
-    Analyses: 
-    - how often did they choose our predicted video in:
-        - E  vs. R
-        - SO vs. R
-        - DO vs. R
-        ** compared to R vs. R baseline
-    - In our experimental conditions (EvSO, EvDO, SOvDO) which video was preferred most often? 
-    - Overall, how much CLOSER was the chosen video's semantic EMBEDDING to the transcript than the not chosen gesture?
-    - Overall, how many MORE set overlaps were in the chosen video's SEMANTIC SET to the transcript than not chosen?
-        - for SO
-        - for DO
-    - Semantic category breakdown:
-        - if we isolate certain semantics, can we make it better? 
-        - e.g. analyses without container, without dynamic, etc. 
-    - How detrimental are semantics that are NOT present in transcript that ARE present in gesture?
-        - remove cases in which predicted video contains categories not present in transcript
-        - look at average INTERSECTION of chosen video vs not chosen (SO, DO)
-        - look at average DIFFERENCE of chosen video vs. not chosen (SO, DO)
-    """
-    video_relations = answer_df['video_relation'].unique()
-    """
-    array(['get_deep_ontology_gesture_match_v_get_shallow_ontology_gesture_match',
-       'get_closest_gesture_from_row_embeddings_v_get_shallow_ontology_gesture_match',
-       'get_shallow_ontology_gesture_match_v_random',
-       'get_closest_gesture_from_row_embeddings_v_random',
-       'get_closest_gesture_from_row_embeddings_v_get_deep_ontology_gesture_match',
-       'get_shallow_ontology_gesture_match_v_get_closest_gesture_from_row_embeddings',
-       'get_shallow_ontology_gesture_match_v_get_deep_ontology_gesture_match',
-       'get_deep_ontology_gesture_match_v_random',
-       'get_deep_ontology_gesture_match_v_get_closest_gesture_from_row_embeddings']
-    """
-    vs_embedding_df = answer_df[answer_df.video_relation.str.contains('get_closest_gesture_from_row_embeddings')]
-    vs_random_df = answer_df[answer_df.video_relation.str.contains('random')]
+def get_percentage_choices(df):
+    actual_perc = []
+    other_perc = []
+    equal_perc = []
+    for cat in actual_cats:
+        ndf = df[df['analysis_group'] == cat]
+        chose_actual_mask = ndf.apply(lambda row:
+                                      True if ('original_gesture' in row['A_function'] and row.semantic_chosen == 'Video A')
+                                      or ('original_gesture' in row['B_function'] and row.semantic_chosen == 'Video B')
+                                      else False, axis=1)
+        num_chose_actual = len(ndf[chose_actual_mask]) / len(ndf)
+        chose_other_mask = ndf.apply(lambda row:
+                                      True if ('original_gesture' not in row['A_function'] and row.semantic_chosen == 'Video A')
+                                      or ('original_gesture' not in row['B_function'] and row.semantic_chosen == 'Video B')
+                                      else False, axis=1)
+        num_chose_other = len(ndf[chose_other_mask]) / len(ndf)
+        chose_equal_mask = ndf.apply(lambda row:
+                                      True if (row.semantic_chosen == 'Match Equally')
+                                      else False, axis=1)
+        num_chose_equal = len(ndf[chose_equal_mask]) / len(ndf)
+        actual_perc.append(num_chose_actual)
+        other_perc.append(num_chose_other)
+        equal_perc.append(num_chose_equal)
 
+    return actual_perc, other_perc, equal_perc
+
+
+def fake_stuff_quickly(comp_data, other_data, equal_data, comp_name='actual', fig_name='test'):
+    N = len(comp_data)
+    # Data on X-axis
+    # Specify the values of blue bars (height)
+    blue_bar = comp_data
+    # Specify the values of orange bars (height)
+    orange_bar = other_data
+    equal_bar = equal_data
+
+    # Position of bars on x-axis
+    ind = np.arange(N)
+
+    # Figure size
+    plt.figure(figsize=(10, 5))
+
+    # Width of a bar
+    width = 0.2
+
+    # Plotting
+    plt.bar(ind, blue_bar, width, label=f'preferred {comp_name}')
+    plt.bar(ind + width, equal_bar, width, label='preferred equal')
+    plt.bar(ind + width + width, orange_bar, width, label='preferred other')
+
+    plt.xlabel('Category group')
+    plt.ylabel("% preference")
+    plt.title(f'percentage preferred in vs. {comp_name} across categories')
+
+    # xticks()
+    # First argument - A list of positions at which ticks should be placed
+    # Second argument -  A list of labels to place at the given locations
+    plt.xticks(ind + width / 3, ('actual_random', f'{comp_name}_embeddedsim', f'{comp_name}_usesim',
+               f'{comp_name}_ontseq', f'{comp_name}_ontpos', f'{comp_name}_ontset',
+               f'{comp_name}_extontseq', f'{comp_name}_extontpos'),
+               rotation=20, fontsize='small')
+
+    # Finding the best position for legends and putting it
+    plt.legend(loc='best')
+    plt.savefig(fig_name)
+
+
+def get_energy_stats(df):
+    chose_same_energy_mask = df.apply(lambda row:
+                                 row.semantic_chosen == row.energy_chosen or
+                                 (row.semantic_chosen == 'Match Equally' and
+                                  row.energy_chosen == 'Equally Energetic'),
+                                  axis=1)
+    cse = len(df[chose_same_energy_mask]) / len(df)
+    return cse
+
+
+def print_choices(df):
+    print('SEMANTIC')
+    print('Chose A: ', len(df[df.semantic_chosen == 'Video A']) / len(df))
+    print('Chose B: ', len(df[df.semantic_chosen == 'Video B']) / len(df))
+    print('Chose Same: ', len(df[df.semantic_chosen == 'Match Equally']) / len(df))
+    print('ENERGY')
+    print('Chose A: ', len(df[df.energy_chosen == 'Video A']) / len(df))
+    print('Chose B: ', len(df[df.energy_chosen == 'Video B']) / len(df))
+    print('Chose Same: ', len(df[df.energy_chosen == 'Equally Energetic']) / len(df))
+
+    lens = [len(df[df.semantic_chosen == 'Video A']),
+            len(df[df.semantic_chosen == 'Video B'])]
+
+    print('p =', scipy.stats.chisquare(lens).pvalue)
+    print("insig. p means results were equally distributed btw A/B/Same")
+    print('======================================')
+    chose_same_energy_mask = df.apply(lambda row:
+                                 row.semantic_chosen == row.energy_chosen or
+                                 (row.semantic_chosen == 'Match Equally' and
+                                  row.energy_chosen == 'Equally Energetic'),
+                                  axis=1)
+    cse_raw = len(df[chose_same_energy_mask])
+    cse = cse_raw / len(df)
+    oth = len(df) - cse_raw
+    print('Chose same semantic/energy', cse, f'({cse_raw}, {oth})')
+    sames = [cse_raw, oth]
+    print('p =', scipy.stats.chisquare(sames).pvalue)
+    print('significant p means people more likely to choose BOTH semantic and more energetic')
+
+
+def last(l):
+    t = list(l)
+    t = [i for i in t if i is not None]
+    return float(t[-1])
+
+
+def analyse_likert_data():
+    likert_files = os.listdir('experiment_likert_data')
+    dfs = []
+    for f in likert_files:
+        print(f)
+        if 'task' in f:
+            ldf = pd.read_csv(os.path.join('experiment_likert_data', f))
+            if len(ldf) < 25:
+                continue
+            ldf = ldf[ldf['Screen Name'] == 'Screen 1']
+            ldf = ldf[ldf['display'] == 'participant_likert_view']
+            ldf['sem_res'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'VideoA' else None, axis=1)
+            ldf['eng_res'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'Zone6' else None, axis=1)
+            ldf = ldf.groupby(['Trial Number', 'video_relation'], as_index=False).agg(
+                semantic_response=pd.NamedAgg(column='sem_res', aggfunc=last),
+                energy_response=pd.NamedAgg(column='eng_res', aggfunc=last)
+            )
+            dfs.append(ldf)
+    df = pd.concat(dfs)
+    return df
+
+"""
+['get_most_similar_sentence_USE', 'original_gesture',
+       'get_closest_gesture_from_row_embeddings', 'get_extont_pos_match',
+       'get_extont_sequence_match', 'random', 'get_ontology_pos_match',
+       'get_ontology_set_match', 'get_ontology_sequence_match']
+"""
+def print_likert_stats(ldf):
+    all_sem = np.array([])
+    all_eng = np.array([])
+    for k in ldf.video_relation.unique():
+        tdf = ldf[ldf.video_relation == k]
+        sem_scores = np.array(tdf['semantic_response'])
+        eng_scores = np.array(tdf['energy_response'])
+        all_sem = np.append(all_sem, sem_scores)
+        all_eng = np.append(all_eng, eng_scores)
+        print('k:', k)
+        print('avg/sd sem: ', sem_scores.mean(), sem_scores.std())
+        print('avg/sd eng: ', eng_scores.mean(), eng_scores.std())
+        print('--------------------------')
+
+    print('Score correlations: ')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, all_eng)
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+
+## TODO CAROLYN HERE IS THE MAIN STUFF
+raw_df = load_data_II()
+answer_df = get_answer_df(raw_df)
+trial_df = get_trial_df(answer_df)
