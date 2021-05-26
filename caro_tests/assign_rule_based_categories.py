@@ -231,13 +231,16 @@ def get_ontology_distances(r1, r2, ont_level='ont_sequence'):
     return float(sim / tot)
 
 
-def get_transcript_gesture_match(df, matching_fxn1, matching_fxn2):
+def get_transcript_gesture_match(df, matching_fxn1, matching_fxn2, given_row=None):
     """
     Given a sub-df to get a random gesture from, gets a random gesture
     and two gestures from the full DF according to the matching functions passed.
     For a description of potential matches see the above comment.
     """
-    row = get_random_row(df)
+    if given_row is not None:
+        row = given_row
+    else:
+        row = get_random_row(df)
     t0 = matching_fxn1(df, row)
     t1 = matching_fxn2(df, row, exclude=[row, t0])
     return row, t0, t1
@@ -269,6 +272,18 @@ def get_extont_sequence_match(df, row, exclude=[]):
     return r
 
 
+# if multiple keys, only take the first one.
+def prune_ontology(ont_set):
+    n_set = set()
+    n_keys = []
+    for el in ont_set:
+        key = el.split(':')[0]
+        if key not in n_keys:
+            n_set.add(str(el))
+            n_keys.append(key)
+    return n_set
+
+
 def get_ontology_sequence(row, cere, feat_set=None):
     p = row['PHRASE']
     if not feat_set:
@@ -280,10 +295,12 @@ def get_ontology_sequence(row, cere, feat_set=None):
     for w in words:
         if w in feat_set.keys():
             if 'Ont' in feat_set[w].keys():
-                ont_sequence.append(feat_set[w]['Ont'][1])
+                pruned = prune_ontology(feat_set[w]['Ont'][1])
+                ont_sequence.append(pruned)
                 ont_words.append(w)
             elif 'ExtOnt' in feat_set[w].keys():        # if there's no ontology, use the extont.
-                ont_sequence.append(feat_set[w]['ExtOnt'][1])
+                pruned = prune_ontology(feat_set[w]['ExtOnt'][1])
+                ont_sequence.append(pruned)
                 ont_words.append(w)
     return list(zip(ont_sequence, ont_words))
 
@@ -691,6 +708,94 @@ def get_likert_df(data_df, view_name='video_participant_view'):
     return exp_df
 
 
+def get_likert_df_qualitative(data_df, view_name='video_participant_view'):
+    COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn',
+            'video_relation', 'category',
+            'videoA_transcript',
+            # 'vidA_shallow_ont', 'vidB_shallow_ont', 'vidA_deep_ont', 'vidB_deep_ont',
+            # 'transcript_shallow', 'transcript_deep',
+            'transcript_length',
+            'vidA_length',
+            'vidA_embedding_distance', 'vidA_USE_distances',
+            'ShowProgressBar', 'A_function',
+            'A_ontology_match', 'A_extontology_match',
+            'A_ontpos_match', 'A_extontpos_match']
+    # build up a df of examples
+
+    fxns = [
+        get_closest_gesture_from_row_embeddings,
+        get_most_similar_sentence_USE,
+        get_ontology_pos_match,
+        get_extont_pos_match,
+        get_ontology_sequence_match,
+        get_extont_sequence_match
+    ]
+
+    predicted_video = []  # either 'A' or 'B'
+    video_relation = []
+
+    T_rows = []
+    A_rows = []
+    a_fxns = []
+
+    # add an actual
+    r0 = get_random_row(data_df)
+    while (r0['time_length'] < 2.2):
+        r0 = get_random_row(data_df)
+
+    a_fxns.append(['original_gesture'])
+    T_rows.append(r0)
+    A_rows.append(r0)
+    video_relation.append('original_gesture')
+
+    # add a random
+    a_fxns.append(['random'])
+    T_rows.append(r0)
+    A_rows.append(get_random_row(data_df))
+    video_relation.append('random')
+
+    # add one per fxn
+    for f in fxns:
+        # first the fxn vs. random
+        _, r1, r2 = get_transcript_gesture_match(data_df, f, get_random_row)
+        a_fxns.append([f.__name__])
+        T_rows.append(r0)
+        A_rows.append(r1)
+        video_relation.append(f.__name__)
+
+        # format it for the df
+    videoA_fn = [r['video_fn'] for r in A_rows]
+    transcripts = [r['PHRASE'] for r in T_rows]
+    videoA_transcript = [r['PHRASE'] for r in A_rows]
+    transcript_length = [r['time_length'] for r in T_rows]
+    vidA_length = [r['time_length'] for r in A_rows]
+    vidA_embedding_distances = [get_embedding_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+    vidA_USE_distances = [get_USE_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+    vidA_ontology_match = [get_ontology_distances(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+    vidA_extontology_match = [get_ontology_distances(T_rows[i], A_rows[i], ont_level='extont_sequence') for i in range(len(A_rows))]
+    vidA_ontpos_match = [get_ontology_pos_overlaps(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
+    vidA_extontpos_match = [get_ontology_pos_overlaps(T_rows[i], A_rows[i], ont_level='extont_sequence') for i in range(len(A_rows))]
+
+    randomise_trials = [random.randint(1, len(A_rows))] * len(A_rows)
+    display = [view_name] * len(A_rows)
+    show_progress = [1] * len(A_rows)
+    category = [None] * len(A_rows)
+
+    exp_df = pd.DataFrame(list(zip(randomise_trials, display, transcripts, videoA_fn,
+                                   video_relation, category,
+                                   videoA_transcript,
+                                   # vidA_shallow_ontology, vidB_shallow_ontology, vidA_deep_ontology, vidB_deep_ontology,
+                                   # transcript_shallow, transcript_deep,
+                                   transcript_length,
+                                   vidA_length,
+                                   vidA_embedding_distances, vidA_USE_distances,
+                                   show_progress, a_fxns,
+                                   vidA_ontology_match, vidA_extontology_match,
+                                   vidA_ontpos_match, vidA_extontpos_match)),
+                          columns=COLS)
+    return exp_df
+
+
 def get_likert_df_between_subj(data_df, view_name='video_participant_view', num_groups=2):
     COLS = ['randomise_trials', 'display', 'transcripts', 'videoA_fn',
             'video_relation', 'category',
@@ -774,6 +879,100 @@ def get_likert_df_between_subj(data_df, view_name='video_participant_view', num_
                                    vidA_ontology_match, vidA_extontology_match,
                                    vidA_ontpos_match, vidA_extontpos_match)),
                           columns=COLS)
+    return exp_df
+
+
+def get_all_comparative_df(data_df, view_name='video_all_gestures_cheatsheet_view', nrow=10):
+    COLS = ['randomise_trials', 'display', 'transcripts', 'original_fn',
+            'embedded_fn', 'use_fn', 'random_fn',
+            'ont_seq_fn', 'extont_seq_fn',
+            'ont_pos_fn', 'extont_pos_fn',
+            'embedded_transcript', 'use_transcript', 'random_transcript',
+            'ont_seq_transcript', 'extont_seq_transcript',
+            'ont_pos_transcript', 'extont_pos_transcript',
+            'ShowProgressBar']
+    # build up a df of examples
+    dfs = []
+    for i in range(nrow):
+        T_rows = []
+        random_rows = []
+        embedded_rows = []
+        use_rows = []
+        ontseq_rows = []
+        extont_seq_rows = []
+        ontpos_rows = []
+        extont_pos_rows = []
+
+        # add an actual
+        r0 = get_random_row(data_df)
+        while (r0['time_length'] < 2.2):
+            r0 = get_random_row(data_df)
+
+        T_rows.append(r0)
+
+        random_rows.append(get_random_row(data_df))
+
+        _, r1, r2 = get_transcript_gesture_match(data_df, get_closest_gesture_from_row_embeddings, get_random_row, given_row=r0)
+        embedded_rows.append(r1)
+
+        _, r1, r2 = get_transcript_gesture_match(data_df, get_most_similar_sentence_USE, get_random_row, given_row=r0)
+        use_rows.append(r1)
+
+        _, r1, r2 = get_transcript_gesture_match(data_df, get_ontology_sequence_match, get_random_row, given_row=r0)
+        ontseq_rows.append(r1)
+
+        _, r1, r2 = get_transcript_gesture_match(data_df, get_extont_sequence_match, get_random_row, given_row=r0)
+        extont_seq_rows.append(r1)
+
+        _, r1, r2 = get_transcript_gesture_match(data_df, get_ontology_pos_match, get_random_row, given_row=r0)
+        ontpos_rows.append(r1)
+
+        _, r1, r2 = get_transcript_gesture_match(data_df, get_extont_pos_match, get_random_row, given_row=r0)
+        extont_pos_rows.append(r1)
+
+        transcripts = [r['PHRASE'] for r in T_rows]
+        embedded_transcript = [r['PHRASE'] for r in embedded_rows]
+        use_transcript = [r['PHRASE'] for r in use_rows]
+        random_transcript = [r['PHRASE'] for r in random_rows]
+        ont_seq_transcript = [r['PHRASE'] for r in ontseq_rows]
+        extont_seq_transcript = [r['PHRASE'] for r in extont_seq_rows]
+        ont_pos_transcript = [r['PHRASE'] for r in ontpos_rows]
+        extont_pos_transcript = [r['PHRASE'] for r in extont_pos_rows]
+
+        original_fn = [r['video_fn'] for r in T_rows]
+        embedded_fn = [r['video_fn'] for r in embedded_rows]
+        use_fn = [r['video_fn'] for r in use_rows]
+        random_fn = [r['video_fn'] for r in random_rows]
+        ont_seq_fn = [r['video_fn'] for r in ontseq_rows]
+        extont_seq_fn = [r['video_fn'] for r in extont_seq_rows]
+        ont_pos_fn = [r['video_fn'] for r in ontpos_rows]
+        extont_pos_fn = [r['video_fn'] for r in extont_pos_rows]
+
+        display = [view_name] * len(T_rows)
+        randomise_trials = [1] * len(T_rows)
+        show_progress = [1] * len(T_rows)
+
+        """
+        COLS = ['randomise_trials', 'display', 'transcripts', 'original_fn',
+                'embedded_fn', 'use_fn', 'random_fn',
+                'ont_seq_fn', 'extont_seq_fn',
+                'ont_pos_fn', 'extont_pos_fn',
+                'embedded_transcript', 'use_transcript', 'random_transcript',
+                'ont_seq_transcript', 'extont_seq_transcript',
+                'ont_pos_transcript', 'extont_pos_transcript',
+                'ShowProgressBar']
+        """
+        exp_df = pd.DataFrame(list(zip(randomise_trials, display, transcripts, original_fn,
+                                        embedded_fn, use_fn, random_fn,
+                                        ont_seq_fn, extont_seq_fn,
+                                        ont_pos_fn, extont_pos_fn,
+                                        embedded_transcript, use_transcript, random_transcript,
+                                        ont_seq_transcript, extont_seq_transcript,
+                                        ont_pos_transcript, extont_pos_transcript,
+                                        show_progress)),
+                              columns=COLS)
+        dfs.append(exp_df)
+    exp_df = pd.concat(dfs)
     return exp_df
 
 
@@ -962,6 +1161,33 @@ def get_experimental_df(data_df, view_name=None, simplified=False, n=3):
     experimental_df = buffer_intro_rows(experimental_df, n=1)
     experimental_df = buffer_debrief_rows(experimental_df, n=1)
     return experimental_df
+
+
+def get_experimental_df_qualitative(data_df, view_name='qualitative_view_set'):
+    dfs = []
+    for i in range(8):
+        ex_df = get_likert_df_qualitative(data_df, view_name)
+        dfs.append(ex_df)
+    tdf = pd.concat(dfs)
+    # 8 dfs, make sure each row is a different transcript.
+    exp_dfs = []
+    for i in range(0, 8):
+        sdf = tdf.iloc[i::9, :]
+        sdf = buffer_intro_rows(sdf, n=1, view_name='likert_qualitative_intro')
+        sdf = buffer_debrief_rows(sdf, n=1)
+        exp_dfs.append(sdf)
+    # now we have 8 experimental tfs, all different transcripts,
+    # all different conditions, all different videos.
+
+
+    for i in range(len(exp_dfs)):
+        exp_dfs[i].to_csv(f'category_likert_set_{i}.csv')
+
+
+def max_time_diff(df):
+    comp_time = float(df.iloc[0].vidA_length)
+    diffs = [abs(float(t) - comp_time) for t in df.vidA_length.values]
+    return max(diffs)
 
 
 def get_vid_pairs_per_group(df, group):

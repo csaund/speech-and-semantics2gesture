@@ -1,11 +1,15 @@
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+from pylab import savefig
 import re
 import numpy as np
 import scipy
 import scipy.stats
 plt.switch_backend('agg')
+import seaborn as sns
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
 
 # TODO FIRST THING:
 # TODO DOUBLE CHECK THAT THE RESULTS ARE FROM
@@ -748,25 +752,84 @@ def last(l):
 
 
 def analyse_likert_data():
-    likert_files = os.listdir('experiment_likert_data')
+    # dirname = 'experiment_likert_data'
+    dirname = 'experiment_likert_circular'
+    keep_cols = ['Trial Number',
+                 'video_relation',
+                 'videoA_fn',
+                 'vidA_length',
+                 'transcripts',
+                 'videoA_transcript',
+                 'transcript_length',
+                 'vidA_USE_distances',
+                 'vidA_embedding_distance',
+                 'A_ontology_match',
+                 'A_extontology_match',
+                 'A_ontpos_match',
+                 'A_extontpos_match']
+    likert_files = os.listdir(dirname)
     dfs = []
     for f in likert_files:
-        print(f)
         if 'task' in f:
-            ldf = pd.read_csv(os.path.join('experiment_likert_data', f))
+            try:
+                ldf = pd.read_csv(os.path.join(dirname, f))
+            except pd.errors.EmptyDataError as e:
+                print('empty datafile:', f)
+                continue
+            print('processing:', f)
             if len(ldf) < 25:
                 continue
             ldf = ldf[ldf['Screen Name'] == 'Screen 1']
             ldf = ldf[ldf['display'] == 'participant_likert_view']
             ldf['sem_res'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'VideoA' else None, axis=1)
             ldf['eng_res'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'Zone6' else None, axis=1)
-            ldf = ldf.groupby(['Trial Number', 'video_relation'], as_index=False).agg(
+            ldf = ldf.groupby(keep_cols, as_index=False).agg(
                 semantic_response=pd.NamedAgg(column='sem_res', aggfunc=last),
                 energy_response=pd.NamedAgg(column='eng_res', aggfunc=last)
             )
+            ldf['num_words_transcript'] = ldf.apply(lambda row: len(row['transcripts'].split(' ')), axis=1)
+            ldf['num_words_video'] = ldf.apply(lambda row: len(row['videoA_transcript'].split(' ')), axis=1)
             dfs.append(ldf)
     df = pd.concat(dfs)
     return df
+
+
+def try_likert_filtering(ldf, energy_lim=50, energy_min=25):
+    print('HIGH ENERGY')
+    tdf = ldf[ldf['energy_response'] > energy_lim]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'energy.high_energy (p={p})')
+
+    print('LOW ENERGY')
+    tdf = ldf[ldf['energy_response'] < energy_min]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'energy.low_energy (p={p})')
+
+    print('LONG')
+    tdf = ldf[ldf['vidA_length'] >= 2.3]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'length over 2s (p={p})')
+
+    print('SHORT')
+    tdf = ldf[ldf['vidA_length'] <= 2.3]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'length under 2s (p={p})')
+
+    print('LONG WORDS')
+    tdf = ldf[ldf['num_words_transcript'] >= 9]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'wc over 8 words (p={p})')
+
+    print('SHORT WORDS')
+    tdf = ldf[ldf['num_words_transcript'] < 9]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'wc under 8 words (p={p})')
+
+    print('HIGH SEMANTIC')
+    tdf = ldf[ldf['semantic_response'] >= 70]
+    p = np.round(print_likert_stats(tdf), 3)
+    likert_violin_plots(tdf, plotname=f'wc under 8 words (p={p})')
+
 
 """
 ['get_most_similar_sentence_USE', 'original_gesture',
@@ -794,6 +857,135 @@ def print_likert_stats(ldf):
     print('intercept: ', intercept)
     print('r2_value: ', r_value ** 2)
     print('p_value: ', p_value)
+
+    model = ols('semantic_response ~ C(video_relation)', data=ldf).fit()
+    aov_table = sm.stats.anova_lm(model, typ=2)
+    print("====================================")
+    print("ANOVA summary:")
+    print(aov_table)
+    return aov_table.values[0][3]
+
+
+def print_likert_stats_details(ldf):
+    all_sem = np.array(ldf.semantic_response.values)
+    print('Score correlations: semantic vs. embedding dist')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, np.array(ldf.vidA_embedding_distance.values))
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+    print('Score correlations: semantic vs. use dist')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, np.array(ldf.vidA_USE_distances.values))
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+    print('Score correlations: semantic vs. ont match')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, np.array(ldf.A_ontology_match.values))
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+    print('Score correlations: semantic vs. extont match')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, np.array(ldf.A_extontology_match.values))
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+    print('Score correlations: semantic vs. ont pos match')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, np.array(ldf.A_ontpos_match.values))
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+    print('Score correlations: semantic vs. extont pos match')
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(all_sem, np.array(ldf.A_extontpos_match.values))
+    print('slope: ', slope)
+    print('intercept: ', intercept)
+    print('r2_value: ', r_value ** 2)
+    print('p_value: ', p_value)
+
+
+
+def likert_violin_plots(ldf, plotname='violin'):
+    tdf = pd.melt(ldf, id_vars=['Trial Number', 'video_relation'], value_vars=['semantic_response', 'energy_response'],
+                  var_name='rating_axis', value_name='user_value')
+
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(12, 10))
+    plt.xlabel('Group', fontsize=18)
+    plt.title(f'Semantic appropriateness {plotname}_split', fontsize=22)
+    ax = sns.violinplot(x='video_relation', y="user_value",
+                        hue='rating_axis',
+                        scale='width',
+                        split=True,
+                        data=tdf,
+                        cut=0,
+                        palette='Set2',
+                        order=["original_gesture", "random",
+                               "get_closest_gesture_from_row_embeddings", "get_most_similar_sentence_USE",
+                               "get_ontology_set_match",
+                               "get_ontology_sequence_match", "get_extont_sequence_match",
+                               "get_ontology_pos_match", "get_extont_pos_match"])
+    fig = ax.get_figure()
+    plt.xticks(rotation=20, fontsize='xx-small')
+
+    # Finding the best position for legends and putting it
+    plt.legend(loc='best')
+    fig.savefig(f'{plotname}_split.png')
+
+
+
+
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(12, 10))
+    plt.xlabel('Group', fontsize=18)
+    plt.title(f'Semantic appropriateness {plotname}', fontsize=22)
+    ax = sns.violinplot(x='video_relation', y="semantic_response",
+                        scale='width',
+                        data=ldf,
+                        cut=0,
+                        order=["original_gesture", "random",
+                               "get_closest_gesture_from_row_embeddings", "get_most_similar_sentence_USE",
+                               "get_ontology_set_match",
+                               "get_ontology_sequence_match", "get_extont_sequence_match",
+                               "get_ontology_pos_match", "get_extont_pos_match"])
+    fig = ax.get_figure()
+    plt.xticks(rotation=20, fontsize='xx-small')
+
+    # Finding the best position for legends and putting it
+    plt.legend(loc='best')
+    fig.savefig(f'{plotname}.png')
+
+color_map = {
+    'original_gesture': '#7fc97f',
+    'random': '#beaed4',
+    'get_most_similar_sentence_USE': '#fdc086',
+    'get_closest_gesture_from_row_embeddings': '#ffff99',
+    'get_ontology_pos_match': '#386cb0',
+    'get_extont_pos_match': '#f0027f',
+    'get_ontology_sequence_match': '#bf5b17',
+    'get_extont_sequence_match': '#666666',
+     'get_ontology_set_match': 'black'
+}
+
+def plot_likert_sem_vs_energy(ldf, plotname='semantic vs. energy'):
+    tdf = ldf.copy()
+    tdf['color'] = tdf.apply(lambda row: color_map[row['video_relation']], axis=1)
+    ax = ldf.plot.scatter(x='semantic_response',
+                          y='energy_response',
+                          c=tdf.color.values)
+    fig = ax.get_figure()
+    # plt.xticks(rotation=20, fontsize='xx-small')
+
+    # Finding the best position for legends and putting it
+    plt.legend(loc='best')
+    fig.savefig(f'{plotname}.png')
 
 
 ## TODO CAROLYN HERE IS THE MAIN STUFF
