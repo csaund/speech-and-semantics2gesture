@@ -102,7 +102,7 @@ def get_ontology_pos_overlaps(r1, r2, ont_level='ont_sequence'):
         intersect = len(r1_pos_onts.intersection(r2_pos_onts))
         o1_diff = len(r1_pos_onts - r2_pos_onts)
         o2_diff = len(r2_pos_onts - r1_pos_onts)
-        overlaps.append(intersect - o1_diff - o2_diff)
+        overlaps.append(intersect)  # - o1_diff - o2_diff) TODO CAROLYN PUT THIS BACK??
     return sum(overlaps)
 
 
@@ -137,7 +137,8 @@ def get_num_ontology_overlaps(r1, r2):
     intersect = len(ont1.intersection(ont2))
     o1_diff = len(ont1 - ont2)
     o2_diff = len(ont2 - ont1)
-    return intersect - o1_diff - o2_diff
+    return intersect  # - o1_diff - o2_diff
+                    # TODO carolyn PUT THIS BACK??
 
 
 # don't bother with sequence matching, just match up the categories that
@@ -724,11 +725,11 @@ def get_likert_df_qualitative(data_df, view_name='video_participant_view'):
 
     fxns = [
         get_closest_gesture_from_row_embeddings,
-        get_most_similar_sentence_USE,
+        # get_most_similar_sentence_USE,
         get_ontology_pos_match,
-        get_extont_pos_match,
-        get_ontology_sequence_match,
-        get_extont_sequence_match
+        get_extont_pos_match
+        # get_ontology_sequence_match,
+        # get_extont_sequence_match
     ]
 
     predicted_video = []  # either 'A' or 'B'
@@ -739,9 +740,9 @@ def get_likert_df_qualitative(data_df, view_name='video_participant_view'):
     a_fxns = []
 
     # add an actual
-    r0 = get_random_row(data_df)
+    r0, r1, r2 = get_transcript_gesture_match(data_df, get_random_row, get_random_row)
     while (r0['time_length'] < 2.2):
-        r0 = get_random_row(data_df)
+        r0, r1, r2 = get_transcript_gesture_match(data_df, get_random_row, get_random_row)
 
     a_fxns.append(['original_gesture'])
     T_rows.append(r0)
@@ -751,13 +752,13 @@ def get_likert_df_qualitative(data_df, view_name='video_participant_view'):
     # add a random
     a_fxns.append(['random'])
     T_rows.append(r0)
-    A_rows.append(get_random_row(data_df))
+    A_rows.append(r1)
     video_relation.append('random')
 
     # add one per fxn
     for f in fxns:
         # first the fxn vs. random
-        _, r1, r2 = get_transcript_gesture_match(data_df, f, get_random_row)
+        _, r1, r2 = get_transcript_gesture_match(data_df, f, get_random_row, given_row=r0)
         a_fxns.append([f.__name__])
         T_rows.append(r0)
         A_rows.append(r1)
@@ -776,7 +777,7 @@ def get_likert_df_qualitative(data_df, view_name='video_participant_view'):
     vidA_ontpos_match = [get_ontology_pos_overlaps(T_rows[i], A_rows[i]) for i in range(len(A_rows))]
     vidA_extontpos_match = [get_ontology_pos_overlaps(T_rows[i], A_rows[i], ont_level='extont_sequence') for i in range(len(A_rows))]
 
-    randomise_trials = [random.randint(1, len(A_rows))] * len(A_rows)
+    randomise_trials = [1] * len(A_rows)
     display = [view_name] * len(A_rows)
     show_progress = [1] * len(A_rows)
     category = [None] * len(A_rows)
@@ -893,7 +894,7 @@ def get_all_comparative_df(data_df, view_name='video_all_gestures_cheatsheet_vie
             'ShowProgressBar']
     # build up a df of examples
     dfs = []
-    for i in range(nrow):
+    for i in tqdm(range(nrow)):
         T_rows = []
         random_rows = []
         embedded_rows = []
@@ -1163,25 +1164,49 @@ def get_experimental_df(data_df, view_name=None, simplified=False, n=3):
     return experimental_df
 
 
-def get_experimental_df_qualitative(data_df, view_name='qualitative_view_set'):
-    dfs = []
-    for i in range(8):
+def get_experimental_df_set(data_df, view_name='qualitative_view_set'):
+    qual_dfs = []
+    for i in range(5):
         ex_df = get_likert_df_qualitative(data_df, view_name)
-        dfs.append(ex_df)
-    tdf = pd.concat(dfs)
-    # 8 dfs, make sure each row is a different transcript.
-    exp_dfs = []
-    for i in range(0, 8):
-        sdf = tdf.iloc[i::9, :]
-        sdf = buffer_intro_rows(sdf, n=1, view_name='likert_qualitative_intro')
+        qual_dfs.append(ex_df)
+
+    # get a random row from each data frame and keep track of it, to create
+    # our shuffled data frames
+    shuffled_dfs = [pd.DataFrame() for i in range(5)]
+    chosen_indexes = [[] for i in range(5)]
+    for i in range(5):
+        for j in range(len(qual_dfs)):
+            df = qual_dfs[j]
+            k = random.randrange(0, len(df))
+            while k in chosen_indexes[j]:
+                k = random.randrange(0, len(df))
+            r = df.iloc[k]
+            chosen_indexes[j].append(k)
+            shuffled_dfs[i] = shuffled_dfs[i].append(r)
+    return shuffled_dfs
+
+
+def get_experimental_df_qualitative(data_df, view_name='qualitative_view_set'):
+    experimental_df_set1 = get_experimental_df_set(data_df, view_name)
+    experimental_df_set2 = get_experimental_df_set(data_df, view_name)
+
+    # make a DF that's 10 long
+    ndfs = []
+    for i in range(len(experimental_df_set1)):
+        ndfs.append(pd.concat([experimental_df_set1[i], experimental_df_set2[i]]))
+
+    qual_exp_dfs = []
+    for df in ndfs:
+        assert(len(df.transcripts.unique()) == len(df))
+        assert (len(df.videoA_fn.unique()) == len(df))
+        sdf = buffer_intro_rows(df, n=1, view_name='likert_qualitative_intro')
         sdf = buffer_debrief_rows(sdf, n=1)
-        exp_dfs.append(sdf)
+        qual_exp_dfs.append(sdf)
     # now we have 8 experimental tfs, all different transcripts,
     # all different conditions, all different videos.
 
-
-    for i in range(len(exp_dfs)):
-        exp_dfs[i].to_csv(f'category_likert_set_{i}.csv')
+    for i in range(len(qual_exp_dfs)):
+        qual_exp_dfs[i].to_csv(f'qualitative_likert_simplified_10_{i+5}.csv')
 
 
 def max_time_diff(df):

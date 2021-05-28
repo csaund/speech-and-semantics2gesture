@@ -748,12 +748,12 @@ def print_choices(df):
 def last(l):
     t = list(l)
     t = [i for i in t if i is not None]
-    return float(t[-1])
+    return float(t[-1]) - 50
 
 
-def analyse_likert_data():
+def analyse_likert_data(dirname='experiment_likert_data'):
     # dirname = 'experiment_likert_data'
-    dirname = 'experiment_likert_circular'
+    # dirname = 'experiment_likert_circular'
     keep_cols = ['Trial Number',
                  'video_relation',
                  'videoA_fn',
@@ -792,6 +792,255 @@ def analyse_likert_data():
             dfs.append(ldf)
     df = pd.concat(dfs)
     return df
+
+
+def get_qualitative_df(dirname='experiment_likert_qualitative_small'):
+    keep_cols = ['Trial Number',
+                 'video_relation',
+                 'videoA_fn',
+                 'vidA_length',
+                 'transcripts',
+                 'videoA_transcript',
+                 'transcript_length',
+                 'vidA_USE_distances',
+                 'vidA_embedding_distance',
+                 'A_ontology_match',
+                 'A_extontology_match',
+                 'A_ontpos_match',
+                 'A_extontpos_match']
+    likert_files = os.listdir(dirname)
+    dfs = []
+    for f in likert_files:
+        if 'task' in f:
+            try:
+                ldf = pd.read_csv(os.path.join(dirname, f))
+            except pd.errors.EmptyDataError as e:
+                print('empty datafile:', f)
+                continue
+            print('processing:', f)
+            if len(ldf) < 25:
+                continue
+            ldf = ldf[ldf['Screen Name'] == 'Screen 1']
+            ldf = ldf[ldf['display'] == 'qualitative_view_set']
+            ldf['separation'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'separationslider' else None, axis=1)
+            ldf['certainty'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'certainslider' else None, axis=1)
+            ldf['process'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'processslider' else None, axis=1)
+            ldf['positive'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'personalslider' else None, axis=1)
+            ldf = ldf.groupby(keep_cols, as_index=False).agg(
+                separation=pd.NamedAgg(column='separation', aggfunc=last),
+                certainty=pd.NamedAgg(column='certainty', aggfunc=last),
+                process=pd.NamedAgg(column='process', aggfunc=last),
+                positive=pd.NamedAgg(column='positive', aggfunc=last)
+            )
+            ldf['num_words_transcript'] = ldf.apply(lambda row: len(row['transcripts'].split(' ')), axis=1)
+            ldf['num_words_video'] = ldf.apply(lambda row: len(row['videoA_transcript'].split(' ')), axis=1)
+            dfs.append(ldf)
+    df = pd.concat(dfs)
+    return df
+
+
+def get_qualitative_stats(ldf):
+    for t in ldf.transcripts.unique():
+        print("====================================")
+        print("Separation // Certainty // Positive // Process")
+        print("Transcript: ", t)
+        tdf = ldf[ldf.transcripts == t]
+        # now we have all the different versions.
+        dat = []
+        relations = ['original_gesture',
+                     'random',
+                     'get_closest_gesture_from_row_embeddings',
+                     # 'get_most_similar_sentence_USE',
+                     'get_ontology_pos_match',
+                     'get_extont_pos_match']
+                     #'get_ontology_sequence_match',
+                     #'get_extont_sequence_match']
+        for r in relations:
+            vdf = tdf[tdf.video_relation == r]
+            if len(vdf) == 0:
+                continue
+            sep = np.array(vdf.separation.values)
+            sep_m = np.round(sep.mean(), 3)
+            sep_std = np.round(sep.std(), 3)
+            cer = np.array(vdf.certainty.values)
+            cer_m = np.round(cer.mean(), 3)
+            cer_std = np.round(cer.std(), 3)
+            pos = np.array(vdf.positive.values)
+            pos_m = np.round(pos.mean(), 3)
+            pos_std = np.round(pos.std(), 3)
+            proc = np.array(vdf.process.values)
+            proc_m = np.round(proc.mean(), 3)
+            proc_std = np.round(proc.std(), 3)
+            print(f'({len(vdf)}) v: {r}, {sep_m}/{sep_std}, {cer_m}/{cer_std}, \ '
+                  f'{pos_m}/{pos_std}, {proc_m}/{proc_std},')
+
+
+def get_qualitative_scores(df):
+    sep = np.array(df.separation.values)
+    sep_m = np.round(sep.mean(), 3)
+    sep_std = np.round(sep.std(), 3)
+    cer = np.array(df.certainty.values)
+    cer_m = np.round(cer.mean(), 3)
+    cer_std = np.round(cer.std(), 3)
+    pos = np.array(df.positive.values)
+    pos_m = np.round(pos.mean(), 3)
+    pos_std = np.round(pos.std(), 3)
+    proc = np.array(df.process.values)
+    proc_m = np.round(proc.mean(), 3)
+    proc_std = np.round(proc.std(), 3)
+    return sep_m, sep_std, cer_m, cer_std, pos_m, pos_std, proc_m, proc_std
+
+
+def get_qualitative_stats_summary(ldf):
+    # on average, how much does each condition differ from original
+    # mean and sd
+    # collect original interpretations
+    transcripts = ldf.transcripts.unique()
+    relations = ['original_gesture',
+                 'random',
+                 'get_closest_gesture_from_row_embeddings',
+                 'get_most_similar_sentence_USE',
+                 'get_ontology_pos_match',
+                 'get_extont_pos_match',
+                 'get_ontology_sequence_match',
+                 'get_extont_sequence_match']
+    cols = ['video_relation', 'sep_m', 'sep_std',
+            'cer_m', 'cer_std', 'pos_m', 'pos_std',
+            'proc_m', 'proc_std', 'transcript', 'n']
+
+    dfs = []
+    ts = []
+    vid_relations = []
+    sep_ms = []
+    sep_stds = []
+    cer_ms = []
+    cer_stds = []
+    pos_ms = []
+    pos_stds = []
+    proc_ms = []
+    proc_stds = []
+    n_judgements = []
+    for t in transcripts:
+        print("=============================")
+        print('TRANSCRIPT', t)
+        tdf = ldf[ldf.transcripts == t]
+        odf = tdf[tdf.video_relation == 'original_gesture']
+        if len(odf) < 1:
+            print('ERROR: NO ORIGINAL JUDGEMENTS FOUND FOR TRANSCRIPT: ', t)
+            continue
+
+        sep_m, sep_std, cer_m, cer_std, pos_m, pos_std, proc_m, proc_std = get_qualitative_scores(odf)
+
+        for r in relations:
+            cdf = tdf[tdf.video_relation == r]
+            if len(cdf) < 1:
+                continue
+            print('comparing relation: ', r)
+            vid_relations.append(r)
+            sep_m_comp, sep_std_comp, cer_m_comp, cer_std_comp, pos_m_comp, pos_std_comp, proc_m_comp, proc_std_comp = get_qualitative_scores(cdf)
+            sep_ms.append(abs(sep_m - sep_m_comp))
+            sep_stds.append(abs(sep_std - sep_std_comp))
+            cer_ms.append(abs(cer_m - cer_m_comp))
+            cer_stds.append(abs(cer_std - cer_std_comp))
+            pos_ms.append(abs(pos_m - pos_m_comp))
+            pos_stds.append(abs(pos_std - pos_std_comp))
+            proc_ms.append(abs(proc_m - proc_m_comp))
+            proc_stds.append(abs(proc_std - proc_std_comp))
+            print('got diffs: ', abs(sep_m - sep_m_comp), abs(cer_m - cer_m_comp), abs(pos_m - pos_m_comp), abs(proc_m - proc_m_comp))
+            print('------------------------')
+            ts.append(t)
+            n_judgements.append(len(cdf))
+
+        df = pd.DataFrame(list(zip(vid_relations,
+                                    sep_ms,
+                                    sep_stds,
+                                    cer_ms,
+                                    cer_stds,
+                                    pos_ms,
+                                    pos_stds,
+                                    proc_ms,
+                                    proc_stds,
+                                    ts,
+                                    n_judgements)),
+                          columns=cols)
+        dfs.append(df)
+    stats_df = pd.concat(dfs)
+    return stats_df
+
+
+def avg(l):
+    return np.array(l).mean()
+
+
+def aggregate_stats_summary(stats_df):
+    agg_df = stats_df.groupby(['video_relation'], as_index=False).agg(
+        sep_mean_diff=pd.NamedAgg(column='sep_m', aggfunc=avg),
+        sep_std_diff=pd.NamedAgg(column='sep_std', aggfunc=avg),
+        cer_m_diff=pd.NamedAgg(column='cer_m', aggfunc=avg),
+        cer_std_diff=pd.NamedAgg(column='cer_std', aggfunc=avg),
+        pos_m_diff=pd.NamedAgg(column='pos_m', aggfunc=avg),
+        pos_std_diff=pd.NamedAgg(column='pos_std', aggfunc=avg),
+        proc_m_diff=pd.NamedAgg(column='proc_m', aggfunc=avg),
+        proc_std_diff=pd.NamedAgg(column='proc_std', aggfunc=avg),
+        n=pd.NamedAgg(column='n', aggfunc=sum)
+    )
+    return agg_df
+
+
+def do_stats():
+    ldf = get_qualitative_df()
+    stats_df = get_qualitative_stats_summary(ldf)
+    agg_df = aggregate_stats_summary(stats_df)
+
+
+def show_density(ldf, plotname='density_responses'):
+    for t in ldf.transcript.unique():
+        idf = ldf[ldf.transcript == t]
+        for r in idf.video_relation.unique():
+            ax = sns.distplot(idf.sep_m, rug=True, hist=False, label=r)
+
+        sns.set_theme(style="whitegrid")
+        plt.figure(figsize=(12, 10))
+        plt.xlabel('Group', fontsize=18)
+        plt.title(f'Semantic Characteristics {plotname}', fontsize=22)
+        ax = sns.violinplot(x='video_relation', y="separation",
+                            # cale='width',
+                            data=idf,
+                            order=["original_gesture", "random",
+                                   "get_closest_gesture_from_row_embeddings",
+                                   "get_ontology_pos_match", "get_extont_pos_match"])
+        fig = ax.get_figure()
+        plt.xticks(rotation=20, fontsize='xx-small')
+        plt.savefig(plotname)
+
+        plotname = plotname + 't2'
+
+        idf['video_relation'] = idf.apply(lambda row:
+                'original gesture' if row['video_relation'] == 'original_gesture'
+           else ('BERT embedding' if row['video_relation'] == 'get_closest_gesture_from_row_embeddings'
+           else ('ontology POS match' if row['video_relation'] == 'get_ontology_pos_match'
+           else ('extended ontology POS match' if row['video_relation'] == 'get_extont_pos_match' else 'random'))),
+                                       axis=1)
+        fig = px.violin(idf, y="separation", color="video_relation",
+                        violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=ldf.columns)
+        fig.write_html(plotname+'separation')
+        fig = px.violin(idf, y="certainty", color="video_relation",
+                        violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=ldf.columns)
+        fig.write_html(plotname+'certainty')
+        fig = px.violin(idf, y="process", color="video_relation",
+                        violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=ldf.columns)
+        fig.write_html(plotname+'process')
+        fig = px.violin(idf, y="positive", color="video_relation",
+                        violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=ldf.columns)
+        fig.write_html(plotname+'positive')
 
 
 def try_likert_filtering(ldf, energy_lim=50, energy_min=25):
