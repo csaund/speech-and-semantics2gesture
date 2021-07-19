@@ -9,7 +9,6 @@ import shutil
 
 ctx.project_id = 'scenic-arc-250709'
 
-
 storage_client = storage.Client()
 devKey = str(open("%s/devKey" % os.getenv("HOME"), "r").read()).strip()
 

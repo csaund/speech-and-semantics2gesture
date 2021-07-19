@@ -147,7 +147,7 @@ spacyTable = hlp.make_spacy_pos_table()
 
 # from spacy.symbols import nsubj, VERB, ADV, ADJ, NOUN
 
-from spacy.lemmatizer import Lemmatizer
+# from spacy.lemmatizer import Lemmatizer
 
 from spacy import displacy
 

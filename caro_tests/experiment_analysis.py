@@ -10,11 +10,15 @@ plt.switch_backend('agg')
 import seaborn as sns
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-# TODO FIRST THING:
-# TODO DOUBLE CHECK THAT THE RESULTS ARE FROM
-# TODO DIFFERENT ANALYSIS PAIRS!!!
-# todo aka make sure it's not the same videos being compared within a comparison group
+
+## TODO FIRST THING:
+## TODO DOUBLE CHECK THAT THE RESULTS ARE FROM
+## TODO DIFFERENT ANALYSIS PAIRS!!!
+## todo aka make sure it's not the same videos being compared within a comparison group
 
 """
 Stacy notes 
@@ -793,7 +797,7 @@ def analyse_likert_data(dirname='experiment_likert_data'):
     df = pd.concat(dfs)
     return df
 
-
+# TODO this is good for qualitative
 def get_qualitative_df(dirname='experiment_likert_qualitative_small'):
     keep_cols = ['Trial Number',
                  'video_relation',
@@ -822,15 +826,15 @@ def get_qualitative_df(dirname='experiment_likert_qualitative_small'):
                 continue
             ldf = ldf[ldf['Screen Name'] == 'Screen 1']
             ldf = ldf[ldf['display'] == 'qualitative_view_set']
-            ldf['separation'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'separationslider' else None, axis=1)
-            ldf['certainty'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'certainslider' else None, axis=1)
-            ldf['process'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'processslider' else None, axis=1)
-            ldf['positive'] = ldf.apply(lambda row: row['Response'] if row['Zone Name'] == 'personalslider' else None, axis=1)
+            ldf['separation'] = ldf.apply(lambda row: float(row['Response']) if row['Zone Name'] == 'separationslider' else None, axis=1)
+            ldf['certainty'] = ldf.apply(lambda row: float(row['Response']) if row['Zone Name'] == 'certainslider' else None, axis=1)
+            ldf['process'] = ldf.apply(lambda row: float(row['Response']) if row['Zone Name'] == 'processslider' else None, axis=1)
+            ldf['positive'] = ldf.apply(lambda row: float(row['Response']) if row['Zone Name'] == 'personalslider' else None, axis=1)
             ldf = ldf.groupby(keep_cols, as_index=False).agg(
-                separation=pd.NamedAgg(column='separation', aggfunc=last),
-                certainty=pd.NamedAgg(column='certainty', aggfunc=last),
-                process=pd.NamedAgg(column='process', aggfunc=last),
-                positive=pd.NamedAgg(column='positive', aggfunc=last)
+                separation=pd.NamedAgg(column='separation', aggfunc='last'),
+                certainty=pd.NamedAgg(column='certainty', aggfunc='last'),
+                process=pd.NamedAgg(column='process', aggfunc='last'),
+                positive=pd.NamedAgg(column='positive', aggfunc='last')
             )
             ldf['num_words_transcript'] = ldf.apply(lambda row: len(row['transcripts'].split(' ')), axis=1)
             ldf['num_words_video'] = ldf.apply(lambda row: len(row['videoA_transcript'].split(' ')), axis=1)
@@ -838,7 +842,7 @@ def get_qualitative_df(dirname='experiment_likert_qualitative_small'):
     df = pd.concat(dfs)
     return df
 
-
+## now pass that df here for overall by process...
 def get_qualitative_stats(ldf):
     for t in ldf.transcripts.unique():
         print("====================================")
@@ -891,7 +895,7 @@ def get_qualitative_scores(df):
     return sep_m, sep_std, cer_m, cer_std, pos_m, pos_std, proc_m, proc_std
 
 
-def get_qualitative_stats_summary(ldf):
+def get_qualitative_stats_summary(ldf, filter_by_concept=None):
     # on average, how much does each condition differ from original
     # mean and sd
     # collect original interpretations
@@ -921,8 +925,6 @@ def get_qualitative_stats_summary(ldf):
     proc_stds = []
     n_judgements = []
     for t in transcripts:
-        print("=============================")
-        print('TRANSCRIPT', t)
         tdf = ldf[ldf.transcripts == t]
         odf = tdf[tdf.video_relation == 'original_gesture']
         if len(odf) < 1:
@@ -933,9 +935,10 @@ def get_qualitative_stats_summary(ldf):
 
         for r in relations:
             cdf = tdf[tdf.video_relation == r]
+            if filter_by_concept:
+                cdf = cdf[cdf.have_concept == filter_by_concept]
             if len(cdf) < 1:
                 continue
-            print('comparing relation: ', r)
             vid_relations.append(r)
             sep_m_comp, sep_std_comp, cer_m_comp, cer_std_comp, pos_m_comp, pos_std_comp, proc_m_comp, proc_std_comp = get_qualitative_scores(cdf)
             sep_ms.append(abs(sep_m - sep_m_comp))
@@ -946,8 +949,6 @@ def get_qualitative_stats_summary(ldf):
             pos_stds.append(abs(pos_std - pos_std_comp))
             proc_ms.append(abs(proc_m - proc_m_comp))
             proc_stds.append(abs(proc_std - proc_std_comp))
-            print('got diffs: ', abs(sep_m - sep_m_comp), abs(cer_m - cer_m_comp), abs(pos_m - pos_m_comp), abs(proc_m - proc_m_comp))
-            print('------------------------')
             ts.append(t)
             n_judgements.append(len(cdf))
 
@@ -964,6 +965,8 @@ def get_qualitative_stats_summary(ldf):
                                     n_judgements)),
                           columns=cols)
         dfs.append(df)
+    if len(dfs) < 2:
+        return None
     stats_df = pd.concat(dfs)
     return stats_df
 
@@ -987,60 +990,309 @@ def aggregate_stats_summary(stats_df):
     return agg_df
 
 
-def do_stats():
-    ldf = get_qualitative_df()
+# Want to do this but only for samples which contain certain elements.
+def do_stats(ldf=None):
+    if ldf is None:
+        ldf = get_qualitative_df()
     stats_df = get_qualitative_stats_summary(ldf)
     agg_df = aggregate_stats_summary(stats_df)
+    return agg_df
 
 
-def show_density(ldf, plotname='density_responses'):
-    for t in ldf.transcript.unique():
-        idf = ldf[ldf.transcript == t]
-        for r in idf.video_relation.unique():
-            ax = sns.distplot(idf.sep_m, rug=True, hist=False, label=r)
+def test_ont_features(tdf):
+    feats = ['container', 'tangible', 'static', 'dynamic', 'intentional', 'agentic', 'trajectory', 'human']
+    for f in feats:
+        print("========================")
+        print(f)
+        adf = do_stats(tdf[tdf[f]])
+        adf.to_csv(f'agg_data_{f}.csv')
+        # show_density(tdf, plotname=f'density_responses{f}')
 
-        sns.set_theme(style="whitegrid")
-        plt.figure(figsize=(12, 10))
-        plt.xlabel('Group', fontsize=18)
-        plt.title(f'Semantic Characteristics {plotname}', fontsize=22)
-        ax = sns.violinplot(x='video_relation', y="separation",
-                            # cale='width',
-                            data=idf,
-                            order=["original_gesture", "random",
-                                   "get_closest_gesture_from_row_embeddings",
-                                   "get_ontology_pos_match", "get_extont_pos_match"])
-        fig = ax.get_figure()
-        plt.xticks(rotation=20, fontsize='xx-small')
-        plt.savefig(plotname)
 
-        plotname = plotname + 't2'
+def get_ont_features_for_phrase(p):
+    ont_feats = cere.generate(p)
+    all_feats = set()
+    for k in ont_feats.keys():
+        if 'Ont' in ont_feats[k].keys():
+            all_feats.update(ont_feats[k]['Ont'][1])
+    return all_feats
 
-        idf['video_relation'] = idf.apply(lambda row:
-                'original gesture' if row['video_relation'] == 'original_gesture'
-           else ('BERT embedding' if row['video_relation'] == 'get_closest_gesture_from_row_embeddings'
-           else ('ontology POS match' if row['video_relation'] == 'get_ontology_pos_match'
-           else ('extended ontology POS match' if row['video_relation'] == 'get_extont_pos_match' else 'random'))),
-                                       axis=1)
-        fig = px.violin(idf, y="separation", color="video_relation",
-                        violinmode='overlay', # draw violins on top of each other
-                        # default violinmode is 'group' as in example above
-                        hover_data=ldf.columns)
-        fig.write_html(plotname+'separation')
-        fig = px.violin(idf, y="certainty", color="video_relation",
-                        violinmode='overlay', # draw violins on top of each other
-                        # default violinmode is 'group' as in example above
-                        hover_data=ldf.columns)
-        fig.write_html(plotname+'certainty')
-        fig = px.violin(idf, y="process", color="video_relation",
-                        violinmode='overlay', # draw violins on top of each other
-                        # default violinmode is 'group' as in example above
-                        hover_data=ldf.columns)
-        fig.write_html(plotname+'process')
-        fig = px.violin(idf, y="positive", color="video_relation",
-                        violinmode='overlay', # draw violins on top of each other
-                        # default violinmode is 'group' as in example above
-                        hover_data=ldf.columns)
-        fig.write_html(plotname+'positive')
+
+def save_point():
+    df = get_qualitative_df()
+    # look at the qualitative stats
+    get_qualitative_stats(df)
+    # aggregate them all
+    stats_df = get_qualitative_stats_summary(df)
+    agg_df = aggregate_stats_summary(stats_df)
+
+    # so the trick might be to look at this agg_df but only for subsets of trials in which
+    # both the original (presented) transcript and the tested gesture transcript contain
+    # particular semantic concepts.
+    # THEN filter out ones where the 'random' selection is too close??
+    # really just need to make 20 sets of 4 violin plots -- 1 for each transcript.
+    make_violins_per_question(df)
+
+
+def test_between_semantic_cats(df):
+    cats_to_test = get_top_semantic_categories(df)
+    for c in cats_to_test:
+        tdf = df.copy()
+        tdf['have_concept'] = tdf.apply(lambda row: both_have_concept(row, c), axis=1)
+        print("Qualitative scores for semantic concept: ", c)
+        # now have to actually go through and filter
+
+        print("FIRST HAS THE CONCEPT: ")
+        # original has concept, not test
+        stats1 = get_qualitative_stats_summary(tdf, filter_by_concept=1)
+        agg_df1 = aggregate_stats_summary(stats1)
+        print(agg_df1)
+        print("SECOND HAS THE CONCEPT: ")
+        # test has concept, not original
+        stats2 = get_qualitative_stats_summary(tdf, filter_by_concept=2)
+        agg_df2 = aggregate_stats_summary(stats2)
+        print(agg_df2)
+        print("BOTH HAVE THE CONCEPT: ")
+        # both have concept
+        stats3 = get_qualitative_stats_summary(tdf, filter_by_concept=3)
+        agg_df3 = aggregate_stats_summary(stats3)
+        print(agg_df3)
+        print("NEITHER HAS THE CONCEPT: ")
+        # neither has concept
+        stats4 = get_qualitative_stats_summary(tdf, filter_by_concept=4)
+        agg_df4 = aggregate_stats_summary(stats4)
+        print(agg_df4)
+        c = "".join(ch for ch in c if ch not in ('!','.',':', '-'))
+        writer = pd.ExcelWriter(f'filter_concepts_{c}.xlsx', engine='xlsxwriter')
+        agg_df1.to_excel(writer, sheet_name='First_Concept')
+        agg_df2.to_excel(writer, sheet_name='Second_Concept')
+        agg_df3.to_excel(writer, sheet_name='Both')
+        agg_df4.to_excel(writer, sheet_name='Neither')
+        writer.save()
+
+
+# TODO: first: look at all the possible concepts we have in our original transcripts in df, and how often they occur
+# TODO second: identify which ones are likely to overlap with gesture
+def get_top_semantic_categories(df):
+    all_concepts = get_ont_features_in_df(df)
+    dict(sorted(all_concepts.items(), reverse=True, key=lambda item: item[1]))
+    # find we get
+    # tangible:+, inentional:-,container:-,trajectory:-,information:-,container:+,time-span:EXTENDED,  etc...
+    keepers = [k for k in all_concepts.keys() if all_concepts[k] >= 5]
+    return keepers
+    # just test the top 40, ish
+
+
+# add columns to df:
+# concepts_in_original
+# concepts_in_test
+def get_ont_features_in_df(df):
+    all_concepts = {}
+    for p in list(df.transcripts.unique()):
+        shallow_concepts = get_ontology_sequence(p, cere)
+        for s in shallow_concepts:
+            for k in s[0]:
+                if k in all_concepts.keys():
+                    all_concepts[k] = all_concepts[k] + 1
+                else:
+                    all_concepts[k] = 1
+    return all_concepts
+
+
+# key: 1 = original has concept, 2 = test has concept, 3 = both, 4 = neither
+def both_have_concept(row, concept):
+    first_concepts = get_flat_ont_sequence(row['transcripts'])
+    second_concepts = get_flat_ont_sequence(row['videoA_transcript'])
+    if concept in first_concepts and concept not in second_concepts:
+        return 1
+    elif concept in second_concepts and concept not in first_concepts:
+        return 2
+    elif concept in second_concepts and concept in first_concepts:
+        return 3
+    else:
+        return 4
+
+
+def get_flat_ont_sequence(p):
+    concepts = set()
+    shallow_concepts = get_ontology_sequence(p, cere)
+    for s in shallow_concepts:
+        concepts = concepts.union(s[0])
+    return concepts
+
+
+# questions
+# when there is a certain feature in the original transcript, if it's also in the guessed transcript,
+# are those scores closer than when that feature isn't present in the guessed transcript?
+# to test:
+# for a given transcript, gather all the ont features
+# for all alternative transcripts presented, gather all ont features
+# compare similarity across the qualitative measures for MATCHING and NON-MATCHING transcripts for each feature
+
+# relatedly,
+# do the presence of certain keys predict higher values?
+# for example, does the presence of the 'movable' ontological feature predict higher ratings in any qualitative domain?
+
+
+
+def compare_matching_nonmatching_ont_features(tdf):
+    closer_count = []
+    in_relations = []
+    out_relations = []
+    maj_in_keys = []
+    maj_out_keys = []
+    equal_keys = []
+    for t in tdf.transcripts.unique():
+        print("=======================")
+        print('transcript: ', t)
+        cdf = tdf[tdf.transcripts == t]
+        sep_m0, sep_std0, cer_m0, cer_std0, pos_m0, pos_std0, proc_m0, proc_std0 = get_qualitative_scores(cdf[cdf.video_relation == 'original_gesture'])
+
+        t_feats = get_ont_features_for_phrase(t)
+        cdf['comparison_feats'] = cdf.apply(lambda row: get_ont_features_for_phrase(row['videoA_transcript']), axis=1)
+        ndf = cdf[cdf.video_relation != 'original_gesture']
+        for f in t_feats:
+            if 'type' in f:
+                continue
+            print(f'{f}')
+            mask = ndf.apply(lambda row: f in row.comparison_feats, axis=1)
+            in_df = ndf[mask]
+            out_df = ndf[~mask]
+            print('in_df: ', len(in_df), 'out_df: ', len(out_df))
+            if len(in_df) < 1 or len(out_df) < 1:
+                print('-------------------')
+                continue
+            sep_m1, sep_std1, cer_m1, cer_std1, pos_m1, pos_std1, proc_m1, proc_std1 = get_qualitative_scores(in_df)
+            sep_m2, sep_std2, cer_m2, cer_std2, pos_m2, pos_std2, proc_m2, proc_std2 = get_qualitative_scores(out_df)
+            sep_close = A_B_closer(sep_m0, sep_m1, sep_m2)
+            cer_close = A_B_closer(cer_m0, cer_m1, cer_m2)
+            pos_close = A_B_closer(pos_m0, pos_m1, pos_m2)
+            proc_close = A_B_closer(proc_m0, proc_m1, proc_m2)
+            closer_count += [sep_close, cer_close, pos_close, proc_close]
+            print('sep: ', sep_m0, sep_m1, sep_m2, f'({A_B_closer(sep_m0, sep_m1, sep_m2)})')
+            print('cer: ', cer_m0, cer_m1, cer_m2, f'({A_B_closer(cer_m0, cer_m1, cer_m2)})')
+            print('pos: ', pos_m0, pos_m1, pos_m2, f'({A_B_closer(pos_m0, pos_m1, pos_m2)})')
+            print('proc: ', proc_m0, proc_m1, proc_m2, f'({A_B_closer(proc_m0, proc_m1, proc_m2)})')
+            print('in:', list(in_df.video_relation.values))
+            print('out', list(out_df.video_relation.values))
+            in_relations += list(in_df.video_relation.values)
+            out_relations += list(out_df.video_relation.values)
+            if len([l for l in [sep_close, cer_close, pos_close, proc_close] if l == 'A']) > 2:
+                maj_in_keys.append(f)
+            elif len([l for l in [sep_close, cer_close, pos_close, proc_close] if l == 'A']) < 2:
+                maj_out_keys.append(f)
+            else:
+                equal_keys.append(f)
+            print('--------------------')
+    print('Matching gestures closer: ', len([l for l in closer_count if l == 'A']))
+    print('Non-Matching gestures closer: ', len([l for l in closer_count if l == 'B']))
+    print('Matching gestures by mechanism: ')
+    print('random', len([l for l in in_relations if l == 'random']))
+    print('original_gesture', len([l for l in in_relations if l == 'original_gesture']))
+    print('get_closest_gesture_from_row_embeddings', len([l for l in in_relations if l == 'get_closest_gesture_from_row_embeddings']))
+    print('get_extont_pos_match', len([l for l in in_relations if l == 'get_extont_pos_match']))
+    print('get_ontology_pos_match', len([l for l in in_relations if l == 'get_ontology_pos_match']))
+    print('Non-matching gestures by mechanism: ')
+    print('random', len([l for l in out_relations if l == 'random']))
+    print('original_gesture', len([l for l in out_relations if l == 'original_gesture']))
+    print('get_closest_gesture_from_row_embeddings', len([l for l in out_relations if l == 'get_closest_gesture_from_row_embeddings']))
+    print('get_extont_pos_match', len([l for l in out_relations if l == 'get_extont_pos_match']))
+    print('get_ontology_pos_match', len([l for l in out_relations if l == 'get_ontology_pos_match']))
+    print('.........')
+    print('majority in keys: ', maj_in_keys)
+    print('majority out keys: ', maj_out_keys)
+    print('split keys: ', equal_keys)
+    maj_in = set(maj_in_keys)
+    maj_out = set(maj_out_keys)
+    eq = set(equal_keys)
+    print('intersection btw in/out: ', len(set.intersection(maj_in, maj_out)))
+
+
+def A_B_closer(o, a, b):
+    return 'A' if abs(o-a) < abs(o-b) else 'B'
+
+
+def make_violins_per_question(df):
+    trans = df.transcripts.unique()
+    for t in trans:
+        tdf = df[df.transcripts == t]
+        fig = go.Figure
+        measures = ['separation', 'certainty', 'process', 'positive']
+        for m in measures:
+            fig.add_trace(px.violin(tdf, y=m, color="video_relation",
+                    violinmode='overlay', # draw violins on top of each other
+                    # default violinmode is 'group' as in example above
+                    hover_data=tdf.columns))
+        fig.savefig('testquestions.html')
+
+
+def show_density(tdf, plotname='density_responses'):
+    # for t in ldf.transcript.unique():
+    # idf = ldf[ldf.transcript == t]
+
+    for r in tdf.video_relation.unique():
+        ax = sns.distplot(tdf.sep_m, rug=True, hist=False, label=r)
+
+    sns.set_theme(style="whitegrid")
+    plt.figure(figsize=(12, 10))
+    plt.xlabel('Group', fontsize=18)
+    plt.title(f'Semantic Characteristics {plotname}', fontsize=22)
+    ax = sns.violinplot(x='video_relation', y="separation",
+                        # cale='width',
+                        data=tdf,
+                        order=["original_gesture", "random",
+                               "get_closest_gesture_from_row_embeddings",
+                               "get_ontology_pos_match", "get_extont_pos_match"])
+    fig = ax.get_figure()
+    plt.xticks(rotation=20, fontsize='xx-small')
+    plt.savefig('testfigure')
+
+    plotname = plotname + 't2'
+
+    idf['video_relation'] = idf.apply(lambda row:
+            'original gesture' if row['video_relation'] == 'original_gesture'
+       else ('BERT embedding' if row['video_relation'] == 'get_closest_gesture_from_row_embeddings'
+       else ('ontology POS match' if row['video_relation'] == 'get_ontology_pos_match'
+       else ('extended ontology POS match' if row['video_relation'] == 'get_extont_pos_match' else 'random'))),
+                                   axis=1)
+
+    fig_sep = px.violin(idf, y="separation", color="video_relation",
+                    violinmode='overlay', # draw violins on top of each other
+                    # default violinmode is 'group' as in example above
+                    hover_data=ldf.columns)
+    fig_sep_traces = []
+    for trace in range(len(fig_sep["data"])):
+        fig_sep_traces.append(fig_sep["data"][trace])
+    # fig.write_html(plotname+'separation')
+    fig_cer = px.violin(idf, y="certainty", color="video_relation",
+                    violinmode='overlay', # draw violins on top of each other
+                    # default violinmode is 'group' as in example above
+                    hover_data=ldf.columns)
+    fig_cer_traces = []
+    for trace in range(len(fig_cer["data"])):
+        fig_cer_traces.append(fig_cer["data"][trace])
+
+    """
+    fig.write_html(plotname+'certainty')
+    fig_proc = px.violin(idf, y="process", color="video_relation",
+                    violinmode='overlay', # draw violins on top of each other
+                    # default violinmode is 'group' as in example above
+                    hover_data=ldf.columns)
+    fig.write_html(plotname+'process')
+    fig_pos = px.violin(idf, y="positive", color="video_relation",
+                    violinmode='overlay', # draw violins on top of each other
+                    # default violinmode is 'group' as in example above
+                    hover_data=ldf.columns)
+    fig.write_html(plotname+'positive')
+    """
+    tf = sp.make_subplots(rows=1, cols=2)
+    for traces in fig_sep_traces:
+        tf.append_trace(traces, row=1, col=1)
+    for traces in fig_cer_traces:
+        tf.append_trace(traces, row=1, col=2)
+
+    tf.write_html('WHATTHEFUCK')
+
 
 
 def try_likert_filtering(ldf, energy_lim=50, energy_min=25):
@@ -1160,6 +1412,27 @@ def print_likert_stats_details(ldf):
     print('p_value: ', p_value)
 
 
+def transcript_has_key(row, target_key=""):
+    ont_feats = cere.generate(row['transcripts'])
+    for k in ont_feats.keys():
+        if 'Ont' in ont_feats[k].keys():
+            if target_key in ont_feats[k]['Ont'][1]:
+                return True
+    return False
+
+
+def get_container_gestures(ldf):
+    tdf = ldf.copy()
+    tdf['container'] = tdf.apply(lambda row: transcript_has_key(row, target_key='container:+'), axis=1)
+    tdf['tangible'] = tdf.apply(lambda row: transcript_has_key(row, target_key='tangible:+'), axis=1)
+    tdf['static'] = tdf.apply(lambda row: transcript_has_key(row, target_key='aspect:STATIC'), axis=1)
+    tdf['dynamic'] = tdf.apply(lambda row: transcript_has_key(row, target_key='aspect:DYNAMIC'), axis=1)
+    tdf['intentional'] = tdf.apply(lambda row: transcript_has_key(row, target_key='intentional:+'), axis=1)
+    tdf['agentic'] = tdf.apply(lambda row: transcript_has_key(row, target_key='cause:AGENTIVE'), axis=1)
+    tdf['trajectory'] = tdf.apply(lambda row: transcript_has_key(row, target_key='trajectory:+'), axis=1)
+    tdf['human'] = tdf.apply(lambda row: transcript_has_key(row, target_key='origin:HUMAN'), axis=1)
+    return tdf
+
 
 def likert_violin_plots(ldf, plotname='violin'):
     tdf = pd.melt(ldf, id_vars=['Trial Number', 'video_relation'], value_vars=['semantic_response', 'energy_response'],
@@ -1187,9 +1460,6 @@ def likert_violin_plots(ldf, plotname='violin'):
     # Finding the best position for legends and putting it
     plt.legend(loc='best')
     fig.savefig(f'{plotname}_split.png')
-
-
-
 
     sns.set_theme(style="whitegrid")
     plt.figure(figsize=(12, 10))
@@ -1241,3 +1511,103 @@ def plot_likert_sem_vs_energy(ldf, plotname='semantic vs. energy'):
 raw_df = load_data_II()
 answer_df = get_answer_df(raw_df)
 trial_df = get_trial_df(answer_df)
+
+
+#######################################
+# COPY wn parsing stuff
+def prune_ontology(ont_set):
+    n_set = set()
+    n_keys = []
+    for el in ont_set:
+        key = el.split(':')[0]
+        if key not in n_keys:
+            n_set.add(str(el))
+            n_keys.append(key)
+    return n_set
+
+
+def get_ontology_sequence(p, cere, feat_set=None):
+    if not feat_set:
+        feat_set = cere.generate(p)
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    ont_sequence = []
+    ont_words = []
+    for w in words:
+        if w in feat_set.keys():
+            if 'Ont' in feat_set[w].keys():
+                pruned = prune_ontology(feat_set[w]['Ont'][1])
+                ont_sequence.append(pruned)
+                ont_words.append(w)
+            elif 'ExtOnt' in feat_set[w].keys():        # if there's no ontology, use the extont.
+                pruned = prune_ontology(feat_set[w]['ExtOnt'][1])
+                ont_sequence.append(pruned)
+                ont_words.append(w)
+    return list(zip(ont_sequence, ont_words))
+
+
+# extra ont
+def get_extont_sequence(p, cere, feat_set=None):
+    if not feat_set:
+        feat_set = cere.generate(p)
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    ont_sequence = []
+    ont_words = []
+    for w in words:
+        if w in feat_set.keys():
+            ontologies = feat_set[w]
+            if 'ExtOnt' in ontologies.keys():
+                original_ext_ont = ontologies['ExtOnt'][1]
+                ext_ont = original_ext_ont
+                # if items in extont appear in ontology, dont add them!
+                extont_cats = [k.split(':')[0] for k in list(original_ext_ont)]
+                if 'Ont' in ontologies.keys():
+                    original_ont = ontologies['Ont'][1]
+                    ont_cats = [k.split(':')[0] for k in list(original_ont)]
+                    ext_ont = original_ont
+                    extra_keys = [k for k in extont_cats if k not in ont_cats]
+                    extra_keys += 'type'
+                    for ek in extra_keys:
+                        original_keys = list(original_ext_ont)
+                        updates = [o for o in original_keys if ek in o]
+                        ext_ont.update(updates)
+                ont_sequence.append(ext_ont)
+                ont_words.append(w)
+            elif 'Ont' in feat_set[w].keys():
+                original_ont = ontologies['Ont'][1]
+                ont_sequence.append(original_ont)
+                ont_words.append(w)
+    return list(zip(ont_sequence, ont_words))
+
+
+def get_hypernyms(p, cere, feat_set=None):
+    if not feat_set:
+        feat_set = cere.generate(p)
+    words = p.rstrip().split(' ')
+    words = [s.translate(str.maketrans('', '', string.punctuation)) for s in words]
+    hypernym_sequence = []
+    hypernym_words = []
+    for w in words:
+        if w in feat_set.keys():
+            if 'Hyper_Synonyms' in feat_set[w].keys():
+                hypernym_sequence.append(feat_set[w]['Hyper_Synonyms'][1])
+                hypernym_words.append(w)
+    return list(zip(hypernym_sequence, hypernym_words))
+
+
+def get_parsed_sentence(p, cere, feat_set=None):
+    if not feat_set:
+        feat_set = cere.generate(p)
+    doc = nlp(p)
+    word_seq = []
+    for token in doc:
+        if token.text in feat_set.keys():
+            word_seq.append({
+                'word': token.text,
+                'pos': token.pos_,
+                'tag': token.tag_,
+                'dep': token.dep_
+            })
+    return word_seq
+
