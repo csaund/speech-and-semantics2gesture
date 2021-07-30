@@ -12,8 +12,7 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
+import plotly.subplots as sp
 
 ## TODO FIRST THING:
 ## TODO DOUBLE CHECK THAT THE RESULTS ARE FROM
@@ -1036,7 +1035,8 @@ def save_point():
 
 def test_between_semantic_cats(df):
     cats_to_test = get_top_semantic_categories(df)
-    for c in cats_to_test:
+    all_cats_df = pd.DataFrame()
+    for c in tqdm(cats_to_test):
         tdf = df.copy()
         tdf['have_concept'] = tdf.apply(lambda row: both_have_concept(row, c), axis=1)
         print("Qualitative scores for semantic concept: ", c)
@@ -1046,33 +1046,98 @@ def test_between_semantic_cats(df):
         # original has concept, not test
         stats1 = get_qualitative_stats_summary(tdf, filter_by_concept=1)
         agg_df1 = aggregate_stats_summary(stats1)
+        agg_df1['concept_in'] = 'original_only'
         print(agg_df1)
         print("SECOND HAS THE CONCEPT: ")
         # test has concept, not original
         stats2 = get_qualitative_stats_summary(tdf, filter_by_concept=2)
         agg_df2 = aggregate_stats_summary(stats2)
+        agg_df2['concept_in'] = 'test_only'
         print(agg_df2)
         print("BOTH HAVE THE CONCEPT: ")
         # both have concept
         stats3 = get_qualitative_stats_summary(tdf, filter_by_concept=3)
         agg_df3 = aggregate_stats_summary(stats3)
+        agg_df3['concept_in'] = 'both'
         print(agg_df3)
         print("NEITHER HAS THE CONCEPT: ")
         # neither has concept
         stats4 = get_qualitative_stats_summary(tdf, filter_by_concept=4)
         agg_df4 = aggregate_stats_summary(stats4)
+        agg_df4['concept_in'] = 'neither'
         print(agg_df4)
-        c = "".join(ch for ch in c if ch not in ('!','.',':', '-'))
-        writer = pd.ExcelWriter(f'filter_concepts_{c}.xlsx', engine='xlsxwriter')
-        agg_df1.to_excel(writer, sheet_name='First_Concept')
-        agg_df2.to_excel(writer, sheet_name='Second_Concept')
-        agg_df3.to_excel(writer, sheet_name='Both')
-        agg_df4.to_excel(writer, sheet_name='Neither')
-        writer.save()
+
+        full_df = pd.concat([agg_df1, agg_df2, agg_df3, agg_df4], ignore_index=True)
+        full_df['concept'] = str(c)
+        c = "".join(ch for ch in c if ch not in ('!', '.', ':', '-', '?'))
+
+        all_cats_df = all_cats_df.append(full_df)
+
+    all_cats_df.to_excel(f'filter_concepts_ALL_II.xlsx', engine='xlsxwriter')
+
+
+def comp_test_gesture_across_originals(df):
+    """
+    for all *test* gestures, finds instances in which test gesture t is compared to an
+    original gesture and calculates difference across semantic measurements. Aggregates and
+    returns stats for all test gestures
+
+    This shows the effect of a specific gesture on interpretation, across all transcripts
+    (i.e. we would like to see consistency -- a particular gesture pushes interpretation in a similar way
+    regardless of the transcript it is tested against)
+    """
+    lens = []
+    tdfs = []
+    for t in df.videoA_transcript.unique():
+        tdf = df[df.videoA_transcript == t]
+        lens.append(len(tdf))
+        tdf = tdf[tdf.video_relation != 'original_gesture']
+        if len(tdf) < 5:        # only do it for more than 5 judgements, preliminarily.
+            continue
+        tdfs.append(tdf)
+        if len(tdf.transcripts.unique()) > 1:
+            print('EXTRA TRANSCRIPT FOR ', t)
+        else:
+            continue
+
+        orig_transcripts = list(tdf.transcripts.unique())  # get the transcript that was compared in this round
+        print("DOING NEW MATCH FOR ", t)
+        sep_diffs = []
+        cer_diffs = []
+        proc_diffs = []
+        pos_diffs = []
+        for o in orig_transcripts:
+            comp_df = df[df.transcripts == o]
+            comp_df = comp_df[comp_df.videoA_transcript != t]
+            print('comparing to ', o, f'(n={len(comp_df)})')
+
+            # find stats for all of these
+            print(f"separation test: {tdf.separation.mean()} ----- {tdf.separation.std()}")
+            print(f"separation orig: {comp_df.separation.mean()} ----- {comp_df.separation.std()}")
+            sep_diffs.append(comp_df.separation.mean() - tdf.separation.mean())
+
+            print(f"certainty test: {tdf.certainty.mean()} ----- {tdf.certainty.std()}")
+            print(f"certainty orig: {comp_df.certainty.mean()} ----- {comp_df.certainty.std()}")
+            cer_diffs.append(comp_df.certainty.mean() - tdf.certainty.mean())
+
+            print(f"process test: {tdf.process.mean()} ----- {tdf.process.std()}")
+            print(f"process orig: {comp_df.process.mean()} ----- {comp_df.process.std()}")
+            proc_diffs.append(comp_df.process.mean() - tdf.process.mean())
+
+            print(f"positive test: {tdf.positive.mean()} ----- {tdf.positive.std()}")
+            print(f"positive orig: {comp_df.positive.mean()} ----- {comp_df.positive.std()}")
+            pos_diffs.append(comp_df.positive.mean() - tdf.positive.mean())
+
+        print("sep diffs: ", sep_diffs)
+        print("cer diffs: ", cer_diffs)
+        print("proc diffs: ", proc_diffs)
+        print("pos diffs: ", pos_diffs)
+
 
 
 # TODO: first: look at all the possible concepts we have in our original transcripts in df, and how often they occur
 # TODO second: identify which ones are likely to overlap with gesture
+# TODO need to test effect of SPECIFIC gesture as well
 def get_top_semantic_categories(df):
     all_concepts = get_ont_features_in_df(df)
     dict(sorted(all_concepts.items(), reverse=True, key=lambda item: item[1]))
@@ -1226,72 +1291,80 @@ def make_violins_per_question(df):
         fig.savefig('testquestions.html')
 
 
-def show_density(tdf, plotname='density_responses'):
-    # for t in ldf.transcript.unique():
-    # idf = ldf[ldf.transcript == t]
+def show_density(df):
+    # print out a plot for each transcript
+    for t in df.transcripts.unique():
+        tdf = df[df.transcripts == t]
+        stripped = re.sub(r'[^\w\s]','', t)
+        plot_title = "_".join(stripped.split(" ")[:4])
 
-    for r in tdf.video_relation.unique():
-        ax = sns.distplot(tdf.sep_m, rug=True, hist=False, label=r)
+        tdf['video_relation'] = tdf.apply(lambda row:
+                'original gesture' if row['video_relation'] == 'original_gesture'
+           else ('BERT embedding' if row['video_relation'] == 'get_closest_gesture_from_row_embeddings'
+           else ('ontology POS match' if row['video_relation'] == 'get_ontology_pos_match'
+           else ('extended ontology POS match' if row['video_relation'] == 'get_extont_pos_match' else 'random'))),
+                                       axis=1)
+        color_discrete_map = {
+            'original gesture': '#1f77b4',
+            'BERT embedding': '#ff7f0e',
+            'ontology POS match': '#2ca02c',
+            'extended ontology POS match': '#9467bd',
+            'random': '#d62728'
+        }
 
-    sns.set_theme(style="whitegrid")
-    plt.figure(figsize=(12, 10))
-    plt.xlabel('Group', fontsize=18)
-    plt.title(f'Semantic Characteristics {plotname}', fontsize=22)
-    ax = sns.violinplot(x='video_relation', y="separation",
-                        # cale='width',
-                        data=tdf,
-                        order=["original_gesture", "random",
-                               "get_closest_gesture_from_row_embeddings",
-                               "get_ontology_pos_match", "get_extont_pos_match"])
-    fig = ax.get_figure()
-    plt.xticks(rotation=20, fontsize='xx-small')
-    plt.savefig('testfigure')
+        fig_sep = px.violin(tdf, y="separation", color="video_relation",
+                            color_discrete_map=color_discrete_map,
+                        violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=tdf.columns,
+                            title="Separation")
+        fig_sep_traces = []
+        for trace in range(len(fig_sep["data"])):
+            fig_sep_traces.append(fig_sep["data"][trace])
 
-    plotname = plotname + 't2'
+        fig_cer = px.violin(tdf, y="certainty", color="video_relation",
+                            color_discrete_map=color_discrete_map,
+                            violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=tdf.columns,
+                            title="Certainty")
+        fig_cer_traces = []
+        for trace in range(len(fig_cer["data"])):
+            fig_cer_traces.append(fig_cer["data"][trace])
 
-    idf['video_relation'] = idf.apply(lambda row:
-            'original gesture' if row['video_relation'] == 'original_gesture'
-       else ('BERT embedding' if row['video_relation'] == 'get_closest_gesture_from_row_embeddings'
-       else ('ontology POS match' if row['video_relation'] == 'get_ontology_pos_match'
-       else ('extended ontology POS match' if row['video_relation'] == 'get_extont_pos_match' else 'random'))),
-                                   axis=1)
+        fig_proc = px.violin(tdf, y="process", color="video_relation",
+                             color_discrete_map=color_discrete_map,
+                             violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=tdf.columns,
+                             title="Process")
+        fig_proc_traces = []
+        for trace in range(len(fig_proc["data"])):
+            fig_proc_traces.append(fig_proc["data"][trace])
 
-    fig_sep = px.violin(idf, y="separation", color="video_relation",
-                    violinmode='overlay', # draw violins on top of each other
-                    # default violinmode is 'group' as in example above
-                    hover_data=ldf.columns)
-    fig_sep_traces = []
-    for trace in range(len(fig_sep["data"])):
-        fig_sep_traces.append(fig_sep["data"][trace])
-    # fig.write_html(plotname+'separation')
-    fig_cer = px.violin(idf, y="certainty", color="video_relation",
-                    violinmode='overlay', # draw violins on top of each other
-                    # default violinmode is 'group' as in example above
-                    hover_data=ldf.columns)
-    fig_cer_traces = []
-    for trace in range(len(fig_cer["data"])):
-        fig_cer_traces.append(fig_cer["data"][trace])
+        fig_pos = px.violin(tdf, y="positive", color="video_relation",
+                            color_discrete_map=color_discrete_map,
+                            violinmode='overlay', # draw violins on top of each other
+                        # default violinmode is 'group' as in example above
+                        hover_data=tdf.columns,
+                            title="Positive")
+        fig_pos_traces = []
+        for trace in range(len(fig_pos["data"])):
+            fig_pos_traces.append(fig_pos["data"][trace])
 
-    """
-    fig.write_html(plotname+'certainty')
-    fig_proc = px.violin(idf, y="process", color="video_relation",
-                    violinmode='overlay', # draw violins on top of each other
-                    # default violinmode is 'group' as in example above
-                    hover_data=ldf.columns)
-    fig.write_html(plotname+'process')
-    fig_pos = px.violin(idf, y="positive", color="video_relation",
-                    violinmode='overlay', # draw violins on top of each other
-                    # default violinmode is 'group' as in example above
-                    hover_data=ldf.columns)
-    fig.write_html(plotname+'positive')
-    """
-    tf = sp.make_subplots(rows=1, cols=2)
-    for traces in fig_sep_traces:
-        tf.append_trace(traces, row=1, col=1)
-    for traces in fig_cer_traces:
-        tf.append_trace(traces, row=1, col=2)
+        tf = sp.make_subplots(rows=2, cols=2,
+                              subplot_titles=("Separation", "Certainty", "Process", "Positive"))
+        for traces in fig_sep_traces:
+            tf.append_trace(traces, row=1, col=1)
+        for traces in fig_cer_traces:
+            tf.append_trace(traces, row=1, col=2)
+        for traces in fig_proc_traces:
+            tf.append_trace(traces, row=2, col=1)
+        for traces in fig_pos_traces:
+            tf.append_trace(traces, row=2, col=2)
 
-    tf.write_html('WHATTHEFUCK')
+        tf.update_layout(title_text=f"{stripped}; n={len(tdf)}")
+        tf.write_html(f'semantic_densities_{plot_title}.html')
 
 
 
