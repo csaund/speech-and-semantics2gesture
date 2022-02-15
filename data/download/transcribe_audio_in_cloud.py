@@ -5,7 +5,6 @@ import subprocess
 import re
 from subprocess import call
 
-import cv2
 import numpy as np
 import os
 import shutil
